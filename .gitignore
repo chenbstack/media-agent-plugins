@@ -1,0 +1,3 @@
+# 构建 / 打包产物
+dist/
+*/bin/media-agent-plugin-*

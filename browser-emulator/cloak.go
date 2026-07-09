@@ -32,8 +32,8 @@ var (
 )
 
 // cloakDownloadClient 用于 CloakBrowser 归档下载（约 200MB），超时给到 15 分钟；
-// 抽成包级变量以便单测覆盖。
-var cloakDownloadClient = &http.Client{Timeout: 15 * time.Minute}
+// 抽成包级变量以便单测覆盖。Transport 走系统环境代理（宿主注入 HTTP(S)_PROXY），未注入时直连。
+var cloakDownloadClient = &http.Client{Timeout: 15 * time.Minute, Transport: proxyFromEnvTransport()}
 
 // cloakPlatformSpec 是某个平台对应的 release 资产 tag 与免费档钉死版本。
 type cloakPlatformSpec struct {
@@ -314,11 +314,12 @@ func downloadCloakFile(ctx context.Context, url, dest string) error {
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	effURL := githubProxied(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, effURL, nil)
 	if err != nil {
 		return err
 	}
-	logProgress("开始下载 %s", url)
+	logProgress("开始下载 %s", effURL)
 	resp, err := cloakDownloadClient.Do(req)
 	if err != nil {
 		return err
@@ -395,7 +396,7 @@ func fetchCloakSums(ctx context.Context, version string) (map[string]string, err
 
 // fetchSumsFrom 从单个 URL 拉取并解析 SHA256SUMS 文本（每行 `<hex sha256>  <文件名>`）。
 func fetchSumsFrom(ctx context.Context, url string) (map[string]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubProxied(url), nil)
 	if err != nil {
 		return nil, err
 	}

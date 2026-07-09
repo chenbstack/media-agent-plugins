@@ -30,7 +30,8 @@ var lightpandaReleaseBase = "https://github.com/lightpanda-io/browser/releases/d
 const engineCacheSubdir = "media-agent-browser-emulator"
 
 // httpDownloadClient 用于引擎下载；给足超时容纳几十 MB 的二进制。
-var httpDownloadClient = &http.Client{Timeout: 5 * time.Minute}
+// Transport 走系统环境代理（宿主按全局「代理服务器」设置注入 HTTP(S)_PROXY），未注入时直连。
+var httpDownloadClient = &http.Client{Timeout: 5 * time.Minute, Transport: proxyFromEnvTransport()}
 
 // engineFileName 返回本平台的引擎二进制文件名（与 Makefile fetch-* 及路径解析约定一致）。
 func engineFileName(engine LightweightEngine) string {
@@ -218,11 +219,12 @@ func downloadFile(ctx context.Context, url, dest string) error {
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	effURL := githubProxied(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, effURL, nil)
 	if err != nil {
 		return err
 	}
-	logProgress("开始下载 %s", url)
+	logProgress("开始下载 %s", effURL)
 	resp, err := httpDownloadClient.Do(req)
 	if err != nil {
 		return err

@@ -14,7 +14,7 @@ import (
 	"media-agent-lab/server/pkg/pluginsdk/providers"
 )
 
-//go:embed manifest.yaml
+//go:embed plugin.yaml
 var manifestYAML []byte
 
 //go:embed config.schema.json
