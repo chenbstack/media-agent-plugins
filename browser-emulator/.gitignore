@@ -1,0 +1,12 @@
+# 插件二进制构建产物
+/bin/media-agent-plugin-browser-emulator-*
+# bare `go build .` 在包根产出的同名二进制
+/media-agent-plugin-browser-emulator
+
+# 轻量引擎 / 隐身 Chromium 二进制本体不入仓（用 make fetch-lightpanda 拉取，或在详情页安装）
+/bin/lightpanda-*
+/bin/cloak-*
+/bin/*.tar.gz
+
+# 本地临时
+*.log

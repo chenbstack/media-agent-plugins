@@ -1,0 +1,26 @@
+{
+  "fields": [
+    {
+      "name": "cookie",
+      "type": "password",
+      "label": "115 Cookie",
+      "required": true,
+      "secret": true,
+      "help": "从浏览器登录 115 后复制请求头 Cookie；插件会在内部直接调用 115 文件接口。",
+      "ui": { "placement": "auth.primary" }
+    },
+    {
+      "name": "remote_root",
+      "type": "path",
+      "label": "115 远端根目录",
+      "default": "/",
+      "placeholder": "/媒体库",
+      "help": "作为整理目录配置的路径边界；健康检查只验证该目录可访问。",
+      "ui": {
+        "browse": "storage.directory",
+        "gate": "storage.auth_ready",
+        "hide_access_preview": true
+      }
+    }
+  ]
+}

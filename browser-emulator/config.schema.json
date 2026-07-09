@@ -1,0 +1,30 @@
+{
+  "fields": [
+    {
+      "name": "backend",
+      "type": "select",
+      "label": "渲染后端",
+      "required": true,
+      "default": "lightweight",
+      "help": "lightweight：轻量浏览器（Lightpanda，内存低、启动快，作为默认）；chromium：隐身 Chromium（CloakBrowser，基于 Chromium 源码、带源码级指纹伪装，专门用于过 Cloudflare 人机验证/Turnstile），约 200MB，需先在插件详情页安装「隐身 Chromium」组件。",
+      "options": [
+        { "value": "lightweight", "label": "轻量后端（Lightpanda）" },
+        { "value": "chromium", "label": "隐身 Chromium（CloakBrowser，过 Cloudflare 人机验证）" }
+      ]
+    },
+    {
+      "name": "proxy_url",
+      "type": "string",
+      "label": "代理地址",
+      "placeholder": "http://127.0.0.1:7890",
+      "help": "可选：渲染时走的 HTTP/SOCKS 代理。"
+    },
+    {
+      "name": "default_timeout_seconds",
+      "type": "number",
+      "label": "默认超时（秒）",
+      "default": 45,
+      "help": "单次渲染的默认超时；请求可通过 timeout_seconds 覆盖。"
+    }
+  ]
+}

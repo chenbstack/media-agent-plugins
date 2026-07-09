@@ -1,0 +1,56 @@
+id: browser-emulator
+name: 浏览器仿真
+version: 0.1.0
+description: 在站点账号里开启「浏览器仿真」后，该站点的所有访问改用真实浏览器环境渲染页面，取回真实 HTML 和 cookie。
+type: cli
+entry:
+  darwin-arm64: bin/media-agent-plugin-browser-emulator-darwin-arm64
+  linux-amd64: bin/media-agent-plugin-browser-emulator-linux-amd64
+  linux-arm64: bin/media-agent-plugin-browser-emulator-linux-arm64
+protocol: provider.v1
+transport: hashicorp_go_plugin
+capabilities:
+  - renderer.render
+  - renderer.test
+  # 声明安装生命周期钩子；具体哪个组件在启用后自动预装由 install.components[].auto_install 决定。
+  - lifecycle.install
+permissions:
+  # 浏览器渲染兜底需要访问任意站点。宿主当前对 permissions.network 只做展示与用户授权，
+  # 不在运行时按域名匹配拦截插件出站请求（见验收报告“宿主侧待办”），因此这里用 "*"
+  # 表达“任意域”。若将来宿主支持按域名强制拦截，需要把 "*" 识别为通配放行。
+  # 另外单列出引擎下载域名，便于用户在授权时看清 Install 会访问哪里：
+  #   github.com                     —— Lightpanda / CloakBrowser release 下载入口
+  #   objects.githubusercontent.com  —— GitHub release 资产实际存储（302 跳转目标）
+  #   cloakbrowser.dev               —— CloakBrowser 隐身 Chromium 二进制主下载源
+  network:
+    - "*"
+    - github.com
+    - objects.githubusercontent.com
+    - cloakbrowser.dev
+resources:
+  # 实测（macOS arm64，渲染 JS 页面峰值 RSS，进程树）——已迁移到纯 Go chromedp，无 node 驱动：
+  #   默认轻量后端 = 本插件 Go 进程(~21MB) + Lightpanda 引擎(~51MB) ≈ 72MB
+  # 按默认轻量路径把上限下调到 256MB（约 3.5x headroom）。
+  # 注意：可选的 chromium 兜底后端会启动完整 Chromium（Go ~20MB + Chromium ~290MB ≈ 310MB），
+  # 超过 256MB；启用 backend=chromium 时应把本限额上调到 512MB。
+  # 另注：宿主 RSS watchdog 目前只统计插件直连 PID（Linux /proc），不汇总浏览器子进程，
+  # 且在 macOS 不生效；真实限额需要宿主补齐子进程树统计（见验收报告“宿主侧待办”）。
+  memory_limit_mb: 256
+  idle_timeout_seconds: 60
+# install：本插件对自举安装步骤的自我描述，宿主原样展示（宿主不理解安装内容）。
+# 声明两个可独立安装的组件，各自在详情页有独立的安装/卸载按钮与实时进度。
+install:
+  components:
+    # lightpanda 是默认渲染后端所需的轻量引擎（几十 MB），声明 auto_install：启用插件后宿主
+    # 自动预装，用户零操作即可用默认后端；也可在详情页手动重装 / 卸载。
+    - id: lightpanda
+      title: 轻量引擎 Lightpanda
+      description: 默认渲染引擎（Lightpanda，几十 MB），启用插件后自动安装，也可在此手动重装。
+      uninstallable: true
+      auto_install: true
+    # cloak 是约 200MB 的隐身 Chromium 兜底引擎，只在切到「隐身 Chromium」后端时才需要，
+    # 故不声明 auto_install：不随启用自动下载，由用户按需在详情页手动安装。
+    - id: cloak
+      title: 隐身 Chromium（CloakBrowser）
+      description: 隐身 Chromium 兜底引擎（CloakBrowser，约 200MB），能自动通过 Cloudflare Turnstile 人机验证，仅当「渲染后端」切到「隐身 Chromium」时才需要。
+      uninstallable: true

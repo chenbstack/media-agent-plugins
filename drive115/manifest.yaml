@@ -1,0 +1,31 @@
+id: "115"
+name: 115 网盘
+version: 0.4.1
+description: 通过 115 Cookie 直接调用网盘文件接口，支持扫码登录、插件内健康检查、读取、302 播放直链解析、秒传/二次校验/断点分片上传、同盘复制和移动。
+type: cli
+entry:
+  darwin-arm64: bin/media-agent-plugin-drive115-darwin-arm64
+capabilities:
+  - storage.115
+  - storage.path
+  - storage.cloud
+  - storage.network
+  - storage.test
+  - storage.quota
+  - storage.browse
+  - storage.playback_url
+  - storage.operation.copy
+  - storage.operation.server_copy
+  - storage.operation.move
+  - storage.auth.qrcode
+permissions:
+  network:
+    - "115.com"
+    - "aliyuncs.com"
+  secrets:
+    - "storage.115.cookie"
+  data:
+    - "storage"
+resources:
+  memory_limit_mb: 512
+  idle_timeout_seconds: 60
