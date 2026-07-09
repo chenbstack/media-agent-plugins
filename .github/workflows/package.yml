@@ -1,0 +1,89 @@
+name: Package Plugins
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PLUGINS: drive115 browser-emulator
+  PLATFORMS: darwin-arm64 linux-amd64 linux-arm64
+  MEDIA_AGENT_LAB_REPO: https://git.puzizi.cn/media-agent/MediaAgent.git
+
+jobs:
+  package:
+    name: Test and package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout host SDK
+        run: git clone --depth=1 "$MEDIA_AGENT_LAB_REPO" ../media-agent-lab
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Package plugins
+        run: make package
+
+      - name: Verify package matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for plugin in $PLUGINS; do
+            version="$(awk '$1 == "version:" { gsub(/"/, "", $2); print $2; exit }' "$plugin/plugin.yaml")"
+            if [ -z "$version" ]; then
+              echo "::error file=$plugin/plugin.yaml::missing version"
+              exit 1
+            fi
+
+            for platform in $PLATFORMS; do
+              archive="dist/$plugin-v$version-$platform.tar.gz"
+              if [ ! -s "$archive" ]; then
+                echo "::error::missing package $archive"
+                exit 1
+              fi
+
+              binary="$plugin/bin/media-agent-plugin-$plugin-$platform"
+              if ! tar -tzf "$archive" | grep -Fxq "$binary"; then
+                echo "::error file=$archive::missing $binary"
+                exit 1
+              fi
+            done
+          done
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-agent-plugin-packages
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --verify-tag --generate-notes
+          gh release upload "$TAG_NAME" dist/*.tar.gz --clobber
