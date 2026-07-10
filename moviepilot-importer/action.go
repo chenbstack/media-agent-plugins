@@ -228,7 +228,8 @@ func (h *actionHandler) sync(ctx context.Context) (output pluginsdk.ActionResult
 				return pluginsdk.ActionResult{}, err
 			}
 		}
-		if item.AppliedStatus == "success" && item.AppliedHash == item.Hash {
+		// 规则集需要每次同步都重新写入：宿主侧可能被用户删除，增量缓存不能代表目标仍存在。
+		if item.SourceType != "rules" && item.AppliedStatus == "success" && item.AppliedHash == item.Hash {
 			applied[item.SourceType]["unchanged"]++
 		} else {
 			result, applyErr := h.apply(ctx, item)
