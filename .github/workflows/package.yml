@@ -59,7 +59,8 @@ jobs:
               fi
 
               binary="$plugin/bin/media-agent-plugin-$plugin-$platform"
-              if ! tar -tzf "$archive" | grep -Fxq "$binary"; then
+              # Consume the full tar listing: grep -q can SIGPIPE GNU tar under pipefail.
+              if ! tar -tzf "$archive" | grep -Fx "$binary" >/dev/null; then
                 echo "::error file=$archive::missing $binary"
                 exit 1
               fi
