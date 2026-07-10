@@ -9,7 +9,7 @@
 # 另有 dist/manifests.tar.gz（各插件的 plugin.yaml 汇总），供 cloud 检测仓库时
 # 一次下载全部插件元数据。
 
-PLUGINS   ?= drive115 browser-emulator
+PLUGINS   ?= drive115 browser-emulator moviepilot-importer
 PLATFORMS ?= darwin-arm64 linux-amd64 linux-arm64
 
 .PHONY: build package test vet clean
