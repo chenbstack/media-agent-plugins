@@ -67,6 +67,17 @@ jobs:
             done
           done
 
+          if [ ! -s dist/manifests.tar.gz ]; then
+            echo "::error::missing dist/manifests.tar.gz"
+            exit 1
+          fi
+          for plugin in $PLUGINS; do
+            if ! tar -tzf dist/manifests.tar.gz | grep -Fx "$plugin/plugin.yaml" >/dev/null; then
+              echo "::error file=dist/manifests.tar.gz::missing $plugin/plugin.yaml"
+              exit 1
+            fi
+          done
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:

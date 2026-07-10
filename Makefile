@@ -6,6 +6,8 @@
 # 打包产物：dist/<插件>-v<版本>-<os>-<arch>.tar.gz，包内结构与宿主
 # server/plugins/<id>/ 安装目录一致（plugin.yaml + icon.svg + config.schema.json + bin/）。
 # 安装即解压：tar -xzf dist/xxx.tar.gz -C <宿主>/server/plugins/
+# 另有 dist/manifests.tar.gz（各插件的 plugin.yaml 汇总），供 cloud 检测仓库时
+# 一次下载全部插件元数据。
 
 PLUGINS   ?= drive115 browser-emulator
 PLATFORMS ?= darwin-arm64 linux-amd64 linux-arm64
