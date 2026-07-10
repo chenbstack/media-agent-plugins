@@ -10,8 +10,10 @@ import (
 )
 
 type stateStore struct {
-	db    pluginsdk.PluginDB
-	items string
+	db       pluginsdk.PluginDB
+	items    string
+	runs     string
+	runTasks string
 }
 
 type stagedItem struct {
@@ -33,7 +35,15 @@ func newStateStore(ctx context.Context, db pluginsdk.PluginDB) (*stateStore, err
 	if err != nil {
 		return nil, err
 	}
-	store := &stateStore{db: db, items: items}
+	runs, err := db.TableName("runs")
+	if err != nil {
+		return nil, err
+	}
+	runTasks, err := db.TableName("run_tasks")
+	if err != nil {
+		return nil, err
+	}
+	store := &stateStore{db: db, items: items, runs: runs, runTasks: runTasks}
 	_, err = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+items+` (
 source_type TEXT NOT NULL,
 source_id TEXT NOT NULL,
@@ -50,7 +60,92 @@ PRIMARY KEY(source_type, source_id)
 	if err != nil {
 		return nil, err
 	}
+	_, err = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+runs+` (
+run_id TEXT PRIMARY KEY,
+status TEXT NOT NULL,
+message TEXT NOT NULL DEFAULT '',
+started_at TEXT NOT NULL,
+updated_at TEXT NOT NULL,
+finished_at TEXT
+)`)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+runTasks+` (
+run_id TEXT NOT NULL,
+task_id TEXT NOT NULL,
+name TEXT NOT NULL,
+position INTEGER NOT NULL DEFAULT 0,
+status TEXT NOT NULL,
+current_count INTEGER NOT NULL DEFAULT 0,
+total_count INTEGER NOT NULL DEFAULT 0,
+message TEXT NOT NULL DEFAULT '',
+updated_at TEXT NOT NULL,
+PRIMARY KEY(run_id, task_id)
+)`)
+	if err != nil {
+		return nil, err
+	}
 	return store, nil
+}
+
+var migrationTaskNames = map[string]string{
+	"sites":             "站点",
+	"subscriptions":     "订阅",
+	"subscribe_history": "订阅历史快照",
+	"transfer_history":  "整理历史",
+}
+
+func (s *stateStore) startRun(ctx context.Context, sources []string) (string, error) {
+	now := time.Now().UTC()
+	timestamp := now.Format(time.RFC3339Nano)
+	_, _ = s.db.Exec(ctx, `UPDATE `+s.runs+`
+SET status = 'failed', message = '同步已中断', updated_at = ?, finished_at = ?
+WHERE status = 'running'`, timestamp, timestamp)
+	runID := fmt.Sprintf("moviepilot-%d", now.UnixNano())
+	if _, err := s.db.Exec(ctx, `INSERT INTO `+s.runs+`
+(run_id, status, message, started_at, updated_at)
+VALUES (?, 'running', '准备同步', ?, ?)`, runID, timestamp, timestamp); err != nil {
+		return "", err
+	}
+	for position, source := range sources {
+		name := firstNonEmpty(migrationTaskNames[source], source)
+		if _, err := s.db.Exec(ctx, `INSERT INTO `+s.runTasks+`
+(run_id, task_id, name, position, status, updated_at)
+VALUES (?, ?, ?, ?, 'pending', ?)`, runID, source, name, position, timestamp); err != nil {
+			return "", err
+		}
+	}
+	return runID, nil
+}
+
+func (s *stateStore) updateTask(ctx context.Context, runID, taskID, status string, current, total int, message string) error {
+	if current < 0 {
+		current = 0
+	}
+	if total < 0 {
+		total = 0
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := s.db.Exec(ctx, `UPDATE `+s.runTasks+`
+SET status = ?, current_count = ?, total_count = ?, message = ?, updated_at = ?
+WHERE run_id = ? AND task_id = ?`, status, current, total, message, now, runID, taskID); err != nil {
+		return err
+	}
+	runMessage := firstNonEmpty(migrationTaskNames[taskID], taskID)
+	if strings.TrimSpace(message) != "" {
+		runMessage += " · " + strings.TrimSpace(message)
+	}
+	_, err := s.db.Exec(ctx, `UPDATE `+s.runs+` SET message = ?, updated_at = ? WHERE run_id = ?`, runMessage, now, runID)
+	return err
+}
+
+func (s *stateStore) finishRun(ctx context.Context, runID, status, message string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.Exec(ctx, `UPDATE `+s.runs+`
+SET status = ?, message = ?, updated_at = ?, finished_at = ?
+WHERE run_id = ?`, status, message, now, now, runID)
+	return err
 }
 
 func (s *stateStore) stage(ctx context.Context, sourceType string, item exportItem) (string, error) {
@@ -138,7 +233,47 @@ FROM `+s.items+` GROUP BY source_type, applied_status ORDER BY source_type, appl
 		counts[sourceType][status] = count
 		total += count
 	}
-	return map[string]any{"total": total, "sources": counts}, nil
+	result := map[string]any{
+		"total": total, "sources": counts, "status": "idle", "message": "尚未执行同步",
+		"progress": map[string]any{"current": 0, "total": 0}, "tasks": []map[string]any{},
+	}
+	runs, err := s.db.Query(ctx, `SELECT run_id, status, message, started_at, updated_at, finished_at
+FROM `+s.runs+` ORDER BY started_at DESC LIMIT 1`)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) == 0 {
+		return result, nil
+	}
+	run := runs[0]
+	runID := rowString(run, "run_id")
+	taskRows, err := s.db.Query(ctx, `SELECT task_id, name, status, current_count, total_count, message, updated_at
+FROM `+s.runTasks+` WHERE run_id = ? ORDER BY position, task_id`, runID)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]map[string]any, 0, len(taskRows))
+	completed := 0
+	for _, row := range taskRows {
+		taskStatus := firstNonEmpty(rowString(row, "status"), "pending")
+		if taskStatus == "completed" || taskStatus == "partial" || taskStatus == "failed" {
+			completed++
+		}
+		tasks = append(tasks, map[string]any{
+			"id": rowString(row, "task_id"), "name": rowString(row, "name"), "status": taskStatus,
+			"current": rowInt(row, "current_count"), "total": rowInt(row, "total_count"),
+			"message": rowString(row, "message"), "updated_at": rowString(row, "updated_at"),
+		})
+	}
+	result["run_id"] = runID
+	result["status"] = firstNonEmpty(rowString(run, "status"), "idle")
+	result["message"] = rowString(run, "message")
+	result["started_at"] = rowString(run, "started_at")
+	result["updated_at"] = rowString(run, "updated_at")
+	result["finished_at"] = rowString(run, "finished_at")
+	result["progress"] = map[string]any{"current": completed, "total": len(tasks)}
+	result["tasks"] = tasks
+	return result, nil
 }
 
 func rowString(row map[string]any, key string) string {

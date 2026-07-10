@@ -1,6 +1,6 @@
 id: moviepilot-importer
 name: MoviePilot 数据导入
-version: 0.1.2
+version: 0.1.3
 description: 使用 MoviePilot 管理员账号读取数据，并通过宿主通用站点、订阅和整理能力完成增量导入。
 category: automation
 tags: [moviepilot, import, migration]
@@ -13,6 +13,8 @@ protocol: provider.v1
 transport: hashicorp_go_plugin
 capabilities:
   - action.run
+  - action.test
+  - action.status
 actions:
   - id: test
     name: 检测连接

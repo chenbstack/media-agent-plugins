@@ -47,7 +47,7 @@ func (h *actionHandler) RunAction(ctx context.Context, actionID string, input ma
 		if err != nil {
 			return pluginsdk.ActionResult{}, err
 		}
-		return pluginsdk.ActionResult{Message: "已读取插件暂存状态", Data: status}, nil
+		return pluginsdk.ActionResult{Message: firstNonEmpty(stringValue(status, "message"), "已读取同步状态"), Data: status}, nil
 	default:
 		return pluginsdk.ActionResult{}, fmt.Errorf("未知插件动作 %q", actionID)
 	}
@@ -68,7 +68,7 @@ func (h *actionHandler) config(ctx context.Context) (config, error) {
 	return configWithSecret(h.instance.Config, password)
 }
 
-func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error) {
+func (h *actionHandler) sync(ctx context.Context) (output pluginsdk.ActionResult, syncErr error) {
 	cfg, err := h.config(ctx)
 	if err != nil {
 		return pluginsdk.ActionResult{}, err
@@ -77,6 +77,15 @@ func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error
 	if err != nil {
 		return pluginsdk.ActionResult{}, err
 	}
+	runID, err := store.startRun(ctx, cfg.Sources)
+	if err != nil {
+		return pluginsdk.ActionResult{}, err
+	}
+	defer func() {
+		if syncErr != nil {
+			_ = store.finishRun(context.WithoutCancel(ctx), runID, "failed", syncErr.Error())
+		}
+	}()
 	client := newMoviePilotClient(cfg)
 	if _, err := client.ping(ctx); err != nil {
 		return pluginsdk.ActionResult{}, err
@@ -86,23 +95,40 @@ func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error
 	for _, sourceType := range cfg.Sources {
 		selected[sourceType] = true
 		staged[sourceType] = map[string]int{"created": 0, "updated": 0, "unchanged": 0}
+		if err := store.updateTask(ctx, runID, sourceType, "running", 0, 0, "正在从 MoviePilot 读取"); err != nil {
+			return pluginsdk.ActionResult{}, err
+		}
 		cursor := ""
+		fetched := 0
+		total := 0
 		for {
 			page, err := client.export(ctx, sourceType, cursor, cfg.PageLimit)
 			if err != nil {
+				_ = store.updateTask(context.WithoutCancel(ctx), runID, sourceType, "failed", fetched, total, err.Error())
 				return pluginsdk.ActionResult{}, err
+			}
+			if page.Total > 0 {
+				total = page.Total
 			}
 			for _, item := range page.Items {
 				change, err := store.stage(ctx, sourceType, item)
 				if err != nil {
+					_ = store.updateTask(context.WithoutCancel(ctx), runID, sourceType, "failed", fetched, total, err.Error())
 					return pluginsdk.ActionResult{}, err
 				}
 				staged[sourceType][change]++
+				fetched++
+			}
+			if err := store.updateTask(ctx, runID, sourceType, "running", fetched, total, fmt.Sprintf("已读取 %d 项", fetched)); err != nil {
+				return pluginsdk.ActionResult{}, err
 			}
 			if page.Done || page.NextCursor == "" {
 				break
 			}
 			cursor = page.NextCursor
+		}
+		if err := store.updateTask(ctx, runID, sourceType, "pending", fetched, total, fmt.Sprintf("已读取 %d 项，等待导入", fetched)); err != nil {
+			return pluginsdk.ActionResult{}, err
 		}
 	}
 	items, err := store.list(ctx, selected)
@@ -117,36 +143,76 @@ func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error
 		return left < right
 	})
 	applied := map[string]map[string]int{}
+	taskTotals := map[string]int{}
+	taskCurrent := map[string]int{}
+	for _, sourceType := range cfg.Sources {
+		applied[sourceType] = map[string]int{"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
+	}
+	for _, item := range items {
+		taskTotals[item.SourceType]++
+	}
+	for _, sourceType := range cfg.Sources {
+		message := "等待导入"
+		if taskTotals[sourceType] == 0 {
+			message = "没有可导入数据"
+		}
+		if err := store.updateTask(ctx, runID, sourceType, "pending", 0, taskTotals[sourceType], message); err != nil {
+			return pluginsdk.ActionResult{}, err
+		}
+	}
 	failedMessages := []string{}
 	for _, item := range items {
-		if applied[item.SourceType] == nil {
-			applied[item.SourceType] = map[string]int{"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
+		if taskCurrent[item.SourceType] == 0 {
+			if err := store.updateTask(ctx, runID, item.SourceType, "running", 0, taskTotals[item.SourceType], "正在导入"); err != nil {
+				return pluginsdk.ActionResult{}, err
+			}
 		}
 		if item.AppliedStatus == "success" && item.AppliedHash == item.Hash {
 			applied[item.SourceType]["unchanged"]++
-			continue
-		}
-		result, applyErr := h.apply(ctx, item)
-		if applyErr != nil {
-			applied[item.SourceType]["failed"]++
-			failedMessages = append(failedMessages, item.SourceType+"/"+item.SourceID+": "+applyErr.Error())
-			if err := store.mark(ctx, item, "failed", item.TargetID, applyErr); err != nil {
-				return pluginsdk.ActionResult{}, err
+		} else {
+			result, applyErr := h.apply(ctx, item)
+			if applyErr != nil {
+				applied[item.SourceType]["failed"]++
+				failedMessages = append(failedMessages, item.SourceType+"/"+item.SourceID+": "+applyErr.Error())
+				if err := store.mark(ctx, item, "failed", item.TargetID, applyErr); err != nil {
+					return pluginsdk.ActionResult{}, err
+				}
+			} else {
+				change := result.Change
+				if change == "" {
+					change = "unchanged"
+				}
+				applied[item.SourceType][change]++
+				if err := store.mark(ctx, item, "success", result.TargetID, nil); err != nil {
+					return pluginsdk.ActionResult{}, err
+				}
 			}
-			continue
 		}
-		change := result.Change
-		if change == "" {
-			change = "unchanged"
-		}
-		applied[item.SourceType][change]++
-		if err := store.mark(ctx, item, "success", result.TargetID, nil); err != nil {
+		taskCurrent[item.SourceType]++
+		message := fmt.Sprintf("正在导入 %d/%d", taskCurrent[item.SourceType], taskTotals[item.SourceType])
+		if err := store.updateTask(ctx, runID, item.SourceType, "running", taskCurrent[item.SourceType], taskTotals[item.SourceType], message); err != nil {
 			return pluginsdk.ActionResult{}, err
 		}
 	}
 	message := "MoviePilot 数据同步并导入完成"
+	runStatus := "completed"
 	if len(failedMessages) > 0 {
 		message = fmt.Sprintf("同步完成，%d 个对象导入失败", len(failedMessages))
+		runStatus = "partial"
+	}
+	for _, sourceType := range cfg.Sources {
+		taskStatus := "completed"
+		taskMessage := fmt.Sprintf("已处理 %d 项", taskTotals[sourceType])
+		if applied[sourceType]["failed"] > 0 {
+			taskStatus = "partial"
+			taskMessage = fmt.Sprintf("已处理 %d 项，%d 项失败", taskTotals[sourceType], applied[sourceType]["failed"])
+		}
+		if err := store.updateTask(ctx, runID, sourceType, taskStatus, taskTotals[sourceType], taskTotals[sourceType], taskMessage); err != nil {
+			return pluginsdk.ActionResult{}, err
+		}
+	}
+	if err := store.finishRun(ctx, runID, runStatus, message); err != nil {
+		return pluginsdk.ActionResult{}, err
 	}
 	data := map[string]any{"selected_sources": cfg.Sources, "staged": staged, "applied": applied}
 	if len(failedMessages) > 0 {
