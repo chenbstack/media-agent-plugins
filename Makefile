@@ -12,7 +12,7 @@
 PLUGINS   ?= drive115 browser-emulator moviepilot-importer
 PLATFORMS ?= darwin-arm64 linux-amd64 linux-arm64
 
-.PHONY: build package test vet clean
+.PHONY: build package package-archives package-manifests test vet clean
 
 # 本机平台快速构建（开发用）
 build:
@@ -21,9 +21,14 @@ build:
 		go build -o $$out ./$$p && echo "built $$out"; \
 	done
 
-# 全平台交叉编译 + 打 tar.gz 到 dist/
-package:
+# 全平台交叉编译 + 完整插件目录。
+package: package-archives package-manifests
+
+package-archives:
 	PLATFORMS="$(PLATFORMS)" ./scripts/package.sh $(PLUGINS)
+
+package-manifests:
+	./scripts/package-manifests.sh $(PLUGINS)
 
 test:
 	go test ./...

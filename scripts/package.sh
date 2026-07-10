@@ -2,9 +2,8 @@
 # 打包插件为可分发的 tar.gz。
 #
 # 每个 插件 × 平台 产出一个包：dist/<插件目录名>-v<版本>-<os>-<arch>.tar.gz
-# 另外产出 dist/manifests.tar.gz（每个插件一个目录，含 plugin.yaml 以及
-# 存在的 config.schema.json / icon.svg / README.md），供 cloud 一次下载
-# 全部插件元数据，避免逐个调用 contents API。
+# 完整插件目录由 scripts/package-manifests.sh 单独生成，避免增量构建时只把
+# 本次变化的插件写入 manifests.tar.gz。
 # 包内是一层以插件目录名命名的顶级目录，内容与宿主安装目录
 # （media-agent-lab/server/plugins/<id>/）完全一致：
 #   <插件目录名>/
@@ -69,21 +68,6 @@ for plugin in "$@"; do
     done
 done
 
-echo "==> 打包插件元数据 manifests.tar.gz"
-stage="$(mktemp -d)"
-trap 'rm -rf "$stage"' EXIT
-for plugin in "$@"; do
-    mkdir -p "$stage/$plugin"
-    cp "$ROOT/$plugin/plugin.yaml" "$stage/$plugin/"
-    for extra in config.schema.json icon.svg README.md; do
-        [ -f "$ROOT/$plugin/$extra" ] && cp "$ROOT/$plugin/$extra" "$stage/$plugin/"
-    done
-done
-tar -czf "$DIST/manifests.tar.gz" -C "$stage" "$@"
-rm -rf "$stage"
-trap - EXIT
-echo "    -> dist/manifests.tar.gz"
-
 echo
-echo "全部完成，产物在 dist/："
+echo "插件包构建完成，产物在 dist/："
 ls -lh "$DIST"

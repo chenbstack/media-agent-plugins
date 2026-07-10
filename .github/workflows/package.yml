@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -36,15 +38,83 @@ jobs:
       - name: Test
         run: go test ./...
 
-      - name: Package plugins
-        run: make package
+      - name: Resolve package plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          full_snapshot=0
+          base_ref=""
+          reuse_release_tag=""
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            full_snapshot=1
+            while IFS= read -r candidate; do
+              if [ -n "$candidate" ] && [ "$candidate" != "$GITHUB_REF_NAME" ]; then
+                reuse_release_tag="$candidate"
+                break
+              fi
+            done < <(gh release list --limit 100 --json tagName --jq '.[].tagName')
+            base_ref="$reuse_release_tag"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            base_ref="$PR_BASE_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            base_ref="$BEFORE_SHA"
+          else
+            base_ref="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+
+          build_plugins="$(
+            BASE_REF="$base_ref" \
+            FULL_SNAPSHOT="$full_snapshot" \
+            REUSE_RELEASE_TAG="$reuse_release_tag" \
+            PLATFORMS="$PLATFORMS" \
+            ./scripts/prepare-package.sh $PLUGINS
+          )"
+
+          if [ -n "$build_plugins" ]; then
+            has_builds=true
+          else
+            has_builds=false
+          fi
+
+          {
+            echo "build_plugins=$build_plugins"
+            echo "has_builds=$has_builds"
+            echo "full_snapshot=$full_snapshot"
+            echo "base_ref=$base_ref"
+            echo "reuse_release_tag=$reuse_release_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "base_ref=${base_ref:-<none>}"
+          echo "reuse_release_tag=${reuse_release_tag:-<none>}"
+          echo "build_plugins=${build_plugins:-<none>}"
+
+      - name: Package changed plugins
+        if: steps.plan.outputs.has_builds == 'true'
+        env:
+          BUILD_PLUGINS: ${{ steps.plan.outputs.build_plugins }}
+        run: PLATFORMS="$PLATFORMS" ./scripts/package.sh $BUILD_PLUGINS
+
+      - name: Package complete plugin catalog
+        run: ./scripts/package-manifests.sh $PLUGINS
 
       - name: Verify package matrix
         shell: bash
         run: |
           set -euo pipefail
 
-          for plugin in $PLUGINS; do
+          archive_plugins="${{ steps.plan.outputs.build_plugins }}"
+          if [ "${{ steps.plan.outputs.full_snapshot }}" = "1" ]; then
+            archive_plugins="$PLUGINS"
+          fi
+
+          for plugin in $archive_plugins; do
             version="$(awk '$1 == "version:" { gsub(/"/, "", $2); print $2; exit }' "$plugin/plugin.yaml")"
             if [ -z "$version" ]; then
               echo "::error file=$plugin/plugin.yaml::missing version"
