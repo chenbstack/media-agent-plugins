@@ -12,6 +12,7 @@ import (
 
 	"github.com/chenbstack/media-agent-plugin-sdk-go"
 	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
+	runtimesdk "github.com/chenbstack/media-agent-plugin-sdk-go/runtime"
 )
 
 //go:embed plugin.yaml
@@ -39,13 +40,16 @@ type provider struct {
 	root      string
 	cookieRef string
 	secrets   pluginsdk.SecretResolver
-	logger    pluginsdk.Logger
+	logger    runtimesdk.Feedback
 	client    *client115
 }
 
 var _ providers.PlaybackURLProvider = (*provider)(nil)
 
 func newStorage(ctx context.Context, inst pluginsdk.Instance, secrets pluginsdk.SecretResolver) (providers.StorageProvider, error) {
+	if inst.Runtime == nil || inst.Runtime.Feedback == nil {
+		return nil, fmt.Errorf("宿主未提供插件 Runtime Feedback")
+	}
 	root := strings.TrimSpace(stringConfig(inst.Config["root_path"]))
 	if root == "" {
 		root = strings.TrimSpace(stringConfig(inst.Config["remote_root"]))
@@ -57,7 +61,7 @@ func newStorage(ctx context.Context, inst pluginsdk.Instance, secrets pluginsdk.
 		root:      cleanCloudPath(root),
 		cookieRef: strings.TrimSpace(stringConfig(inst.Config["cookie"])),
 		secrets:   secrets,
-		logger:    inst.Logger,
+		logger:    inst.Runtime.Feedback,
 	}
 	if p.cookieRef == "" {
 		return nil, fmt.Errorf("115 Cookie 必填")

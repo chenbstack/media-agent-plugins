@@ -1,6 +1,6 @@
 id: browser-emulator
 name: 浏览器仿真
-version: 0.1.1
+version: 0.1.2
 description: 在站点账号里开启「浏览器仿真」后，该站点的所有访问改用真实浏览器环境渲染页面，取回真实 HTML 和 cookie。
 category: site-metadata
 tags: [browser, renderer, anti-bot]

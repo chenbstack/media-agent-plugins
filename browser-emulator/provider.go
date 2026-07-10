@@ -14,6 +14,7 @@ import (
 
 	"github.com/chenbstack/media-agent-plugin-sdk-go"
 	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
+	runtimesdk "github.com/chenbstack/media-agent-plugin-sdk-go/runtime"
 )
 
 // renderer 是本插件的 RendererProvider 实现。
@@ -28,14 +29,17 @@ import (
 // 插件进程短命，无需跨请求维持浏览器复用。
 type renderer struct {
 	cfg    Config
-	logger pluginsdk.Logger
+	logger runtimesdk.Feedback
 }
 
 func newRenderer(ctx context.Context, inst pluginsdk.Instance, secrets pluginsdk.SecretResolver) (providers.RendererProvider, error) {
 	_ = secrets
+	if inst.Runtime == nil || inst.Runtime.Feedback == nil {
+		return nil, fmt.Errorf("宿主未提供插件 Runtime Feedback")
+	}
 	return &renderer{
 		cfg:    parseConfig(inst.Config),
-		logger: inst.Logger,
+		logger: inst.Runtime.Feedback,
 	}, nil
 }
 

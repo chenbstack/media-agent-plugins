@@ -2,10 +2,67 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/chenbstack/media-agent-plugin-sdk-go"
+	runtimesdk "github.com/chenbstack/media-agent-plugin-sdk-go/runtime"
 )
+
+func TestConnectionActionWritesSanitizedLogs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/login/access-token":
+			_, _ = io.WriteString(w, `{"access_token":"mp-token","super_user":true,"user_name":"admin"}`)
+		case "/api/v1/system/global":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"BACKEND_VERSION":"2.9.11"}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	logger := &recordingLogger{}
+	handler := actionHandler{
+		instance: pluginsdk.Instance{
+			Config:  map[string]any{"base_url": server.URL, "username": "admin", "password": "secret-ref"},
+			Runtime: &runtimesdk.Services{Feedback: logger},
+		},
+		secrets: staticSecretResolver("top-secret-password"),
+	}
+	result, err := handler.RunAction(context.Background(), "test", nil)
+	if err != nil {
+		t.Fatalf("RunAction(test): %v", err)
+	}
+	if result.Message != "MoviePilot 登录连接正常" {
+		t.Fatalf("message = %q", result.Message)
+	}
+	logs := logger.String()
+	if !strings.Contains(logs, "开始测试 MoviePilot 连接") || !strings.Contains(logs, "MoviePilot 连接测试成功") {
+		t.Fatalf("missing connection logs: %s", logs)
+	}
+	if strings.Contains(logs, "top-secret-password") || strings.Contains(logs, "secret-ref") {
+		t.Fatalf("connection logs leaked a secret: %s", logs)
+	}
+}
+
+func TestSafeLogURLRemovesCredentialsAndQuery(t *testing.T) {
+	got := safeLogURL("https://name:password@mp.example/api?token=secret#fragment")
+	if got != "https://mp.example/api" {
+		t.Fatalf("safeLogURL() = %q", got)
+	}
+}
+
+func TestSafeLogErrorRedactsPassword(t *testing.T) {
+	got := safeLogError(fmt.Errorf("request failed for password=%s", "top-secret"), "top-secret")
+	if strings.Contains(got, "top-secret") || !strings.Contains(got, "***") {
+		t.Fatalf("safeLogError() = %q", got)
+	}
+}
 
 func TestConfigUsesFixedMigrationScope(t *testing.T) {
 	cfg := parseConfig(map[string]any{
@@ -77,6 +134,47 @@ type capabilityRecorder struct {
 	ruleProfile  pluginsdk.RuleProfileWrite
 	ruleSort     pluginsdk.RuleSortWrite
 	ruleDefault  pluginsdk.RuleDefaultWrite
+}
+
+type staticSecretResolver string
+
+func (r staticSecretResolver) Reveal(context.Context, string, string) (string, error) {
+	return string(r), nil
+}
+
+type recordingLogger struct {
+	entries []string
+}
+
+func (l *recordingLogger) append(level runtimesdk.LogLevel, message string, attrs ...any) {
+	l.entries = append(l.entries, fmt.Sprintf("%s %s %v", level, message, attrs))
+}
+
+func (l *recordingLogger) Log(_ context.Context, level runtimesdk.LogLevel, message string, attrs ...any) {
+	l.append(level, message, attrs...)
+}
+
+func (l *recordingLogger) Debug(_ context.Context, message string, attrs ...any) {
+	l.append(runtimesdk.LogDebug, message, attrs...)
+}
+
+func (l *recordingLogger) Info(_ context.Context, message string, attrs ...any) {
+	l.append(runtimesdk.LogInfo, message, attrs...)
+}
+
+func (l *recordingLogger) Warn(_ context.Context, message string, attrs ...any) {
+	l.append(runtimesdk.LogWarn, message, attrs...)
+}
+
+func (l *recordingLogger) Error(_ context.Context, message string, attrs ...any) {
+	l.append(runtimesdk.LogError, message, attrs...)
+}
+
+func (l *recordingLogger) Toast(context.Context, runtimesdk.ToastInput) error         { return nil }
+func (l *recordingLogger) Notify(context.Context, runtimesdk.NotificationInput) error { return nil }
+
+func (l *recordingLogger) String() string {
+	return strings.Join(l.entries, "\n")
 }
 
 func (r *capabilityRecorder) UpsertSiteAccount(ctx context.Context, input pluginsdk.SiteAccountWrite) (pluginsdk.HostWriteResult, error) {
