@@ -3,7 +3,7 @@ module media-agent-plugins
 go 1.26
 
 require (
-	github.com/chenbstack/media-agent-plugin-sdk-go v0.1.0
+	github.com/chenbstack/media-agent-plugin-sdk-go v0.2.0
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
 )

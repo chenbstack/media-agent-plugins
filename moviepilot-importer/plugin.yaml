@@ -1,0 +1,42 @@
+id: moviepilot-importer
+name: MoviePilot 数据导入
+version: 0.1.0
+description: 通过 Media Agent 迁移桥读取 MoviePilot 数据，并使用宿主通用站点、订阅、下载和整理能力完成导入。
+category: automation
+tags: [moviepilot, import, migration]
+type: cli
+entry:
+  darwin-arm64: bin/media-agent-plugin-moviepilot-importer-darwin-arm64
+  linux-amd64: bin/media-agent-plugin-moviepilot-importer-linux-amd64
+  linux-arm64: bin/media-agent-plugin-moviepilot-importer-linux-arm64
+protocol: provider.v1
+transport: hashicorp_go_plugin
+capabilities:
+  - action.run
+actions:
+  - id: test
+    name: 检测连接
+    description: 检查 MoviePilot 迁移桥地址、Token 和协议版本。
+    risk: low
+  - id: sync
+    name: 同步并导入
+    description: 分页同步所选数据，按 hash 增量写入宿主；不迁移历史下载，整理历史默认保留。
+    risk: high
+  - id: status
+    name: 查看状态
+    description: 查看插件私有暂存数据和最近应用状态。
+    risk: low
+permissions:
+  network:
+    - configured:base_url
+  secrets:
+    - plugin.moviepilot.bridge_token
+  data:
+    - storage
+  host:
+    - site.accounts.write
+    - subscriptions.write
+    - transfers.write
+resources:
+  memory_limit_mb: 128
+  idle_timeout_seconds: 60
