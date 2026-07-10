@@ -17,7 +17,6 @@ permissions:
 env:
   PLUGINS: drive115 browser-emulator
   PLATFORMS: darwin-arm64 linux-amd64 linux-arm64
-  MEDIA_AGENT_LAB_REPO: https://git.puzizi.cn/media-agent/MediaAgent.git
 
 jobs:
   package:
@@ -27,9 +26,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Checkout host SDK
-        run: git clone --depth=1 "$MEDIA_AGENT_LAB_REPO" ../media-agent-lab
 
       - name: Set up Go
         uses: actions/setup-go@v5

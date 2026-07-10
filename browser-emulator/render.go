@@ -13,7 +13,7 @@ import (
 	"github.com/chromedp/cdproto/storage"
 	"github.com/chromedp/chromedp"
 
-	"media-agent-lab/server/pkg/pluginsdk/providers"
+	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
 )
 
 // challengeMarkers 对齐主仓 server/internal/plugins/official/site/provider.go 的 underChallenge：

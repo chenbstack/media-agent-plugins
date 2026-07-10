@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"media-agent-lab/server/pkg/pluginsdk"
+	"github.com/chenbstack/media-agent-plugin-sdk-go"
 )
 
 // CloakBrowser 是基于 Chromium 源码、内置指纹伪装、能过 Cloudflare 人机认证的隐身浏览器。

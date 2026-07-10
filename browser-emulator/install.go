@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"time"
 
-	"media-agent-lab/server/pkg/pluginsdk"
+	"github.com/chenbstack/media-agent-plugin-sdk-go"
 )
 
 // lightpandaVersion 是内置自动下载的 Lightpanda 版本标签。

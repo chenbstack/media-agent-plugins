@@ -12,8 +12,8 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"media-agent-lab/server/pkg/pluginsdk"
-	"media-agent-lab/server/pkg/pluginsdk/providers"
+	"github.com/chenbstack/media-agent-plugin-sdk-go"
+	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
 )
 
 // renderer 是本插件的 RendererProvider 实现。

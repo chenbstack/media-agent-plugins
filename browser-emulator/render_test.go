@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"media-agent-lab/server/pkg/pluginsdk/providers"
+	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
 )
 
 func TestUnderChallenge(t *testing.T) {

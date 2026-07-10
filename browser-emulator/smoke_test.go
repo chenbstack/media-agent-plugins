@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"media-agent-lab/server/pkg/pluginsdk"
-	"media-agent-lab/server/pkg/pluginsdk/pluginrpc"
-	"media-agent-lab/server/pkg/pluginsdk/providers"
+	"github.com/chenbstack/media-agent-plugin-sdk-go"
+	"github.com/chenbstack/media-agent-plugin-sdk-go/pluginrpc"
+	"github.com/chenbstack/media-agent-plugin-sdk-go/providers"
 )
 
 func TestSmoke(t *testing.T) {

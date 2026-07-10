@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"media-agent-lab/server/pkg/pluginsdk"
+	"github.com/chenbstack/media-agent-plugin-sdk-go"
 )
 
 // 包目录中的 plugin.yaml 同时用于宿主扫描发现（server/internal/plugins/external.go
