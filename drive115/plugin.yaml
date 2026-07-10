@@ -1,7 +1,9 @@
 id: "115"
 name: 115 网盘
-version: 0.4.1
+version: 0.4.2
 description: 通过 115 Cookie 直接调用网盘文件接口，支持扫码登录、插件内健康检查、读取、302 播放直链解析、秒传/二次校验/断点分片上传、同盘复制和移动。
+category: storage
+tags: [115, cloud-drive]
 type: cli
 entry:
   darwin-arm64: bin/media-agent-plugin-drive115-darwin-arm64
