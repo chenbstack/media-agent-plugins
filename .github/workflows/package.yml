@@ -176,7 +176,7 @@ jobs:
           payload="$(printf '{"repo_url":"%s"}' "$REPO_URL")"
           if ! curl --silent --fail \
             --connect-timeout 5 \
-            --max-time 30 \
+            --max-time 120 \
             --header 'Content-Type: application/json' \
             --data "$payload" \
             'https://mac.s.puzizi.cn/api/v1/plugins/repositories/check-updates'; then
