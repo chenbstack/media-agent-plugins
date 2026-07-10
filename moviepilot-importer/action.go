@@ -29,12 +29,12 @@ func (h *actionHandler) RunAction(ctx context.Context, actionID string, input ma
 		if err != nil {
 			return pluginsdk.ActionResult{}, err
 		}
-		ping, err := newBridgeClient(cfg).ping(ctx)
+		ping, err := newMoviePilotClient(cfg).ping(ctx)
 		if err != nil {
 			return pluginsdk.ActionResult{}, err
 		}
-		return pluginsdk.ActionResult{Message: "MoviePilot 迁移桥连接正常", Data: map[string]any{
-			"protocol": ping.Protocol, "plugin": ping.Plugin, "moviepilot": ping.MoviePilot, "export_types": ping.ExportTypes,
+		return pluginsdk.ActionResult{Message: "MoviePilot 登录连接正常", Data: map[string]any{
+			"moviepilot": ping.MoviePilot, "export_types": ping.ExportTypes,
 		}}, nil
 	case "sync":
 		return h.sync(ctx)
@@ -60,12 +60,12 @@ func (h *actionHandler) config(ctx context.Context) (config, error) {
 	if h.secrets == nil {
 		return config{}, fmt.Errorf("宿主未提供密钥读取能力")
 	}
-	ref := stringValue(h.instance.Config, "bridge_token")
-	token, err := h.secrets.Reveal(ctx, ref, "连接 MoviePilot 迁移桥")
+	ref := stringValue(h.instance.Config, "password")
+	password, err := h.secrets.Reveal(ctx, ref, "登录 MoviePilot 读取迁移数据")
 	if err != nil {
 		return config{}, err
 	}
-	return configWithSecret(h.instance.Config, token)
+	return configWithSecret(h.instance.Config, password)
 }
 
 func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error) {
@@ -77,26 +77,13 @@ func (h *actionHandler) sync(ctx context.Context) (pluginsdk.ActionResult, error
 	if err != nil {
 		return pluginsdk.ActionResult{}, err
 	}
-	client := newBridgeClient(cfg)
+	client := newMoviePilotClient(cfg)
 	if _, err := client.ping(ctx); err != nil {
 		return pluginsdk.ActionResult{}, err
-	}
-	snapshot, err := client.snapshot(ctx)
-	if err != nil {
-		return pluginsdk.ActionResult{}, err
-	}
-	available := map[string]bool{}
-	for _, source := range snapshot.Types {
-		if source.Type != "" && source.Error == "" {
-			available[source.Type] = true
-		}
 	}
 	selected := map[string]bool{}
 	staged := map[string]map[string]int{}
 	for _, sourceType := range cfg.Sources {
-		if !available[sourceType] {
-			continue
-		}
 		selected[sourceType] = true
 		staged[sourceType] = map[string]int{"created": 0, "updated": 0, "unchanged": 0}
 		cursor := ""
@@ -217,7 +204,7 @@ func (h *actionHandler) apply(ctx context.Context, item stagedItem) (pluginsdk.H
 			Status: transferStatus(data["status"]), Error: stringValue(data, "errmsg"), SizeBytes: size,
 			SeasonNumber: season, EpisodeNumber: episode, OccurredAt: parseSourceTime(stringValue(data, "date")), Metadata: metadata,
 		})
-	case "system_settings", "plugin_configs", "plugin_data", "subscribe_history":
+	case "subscribe_history":
 		return pluginsdk.HostWriteResult{TargetID: "archive:" + item.SourceType + ":" + item.SourceID, Change: "created"}, nil
 	default:
 		return pluginsdk.HostWriteResult{TargetID: item.TargetID, Change: "unchanged"}, nil
@@ -225,7 +212,7 @@ func (h *actionHandler) apply(ctx context.Context, item stagedItem) (pluginsdk.H
 }
 
 func sourcePriority(sourceType string) int {
-	for index, source := range []string{"subscriptions", "sites", "transfer_history", "system_settings", "plugin_configs", "plugin_data", "subscribe_history"} {
+	for index, source := range []string{"subscriptions", "sites", "transfer_history", "subscribe_history"} {
 		if source == sourceType {
 			return index
 		}

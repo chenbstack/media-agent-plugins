@@ -8,13 +8,21 @@ import (
 )
 
 func TestConfigDefaultsKeepTransferAndExcludeDownloadHistory(t *testing.T) {
-	cfg := parseConfig(map[string]any{"base_url": "https://mp.example"})
+	cfg := parseConfig(map[string]any{"base_url": "https://mp.example", "username": "admin"})
 	selected := selectedSet(cfg.Sources)
 	if !selected["transfer_history"] || !selected["subscriptions"] || !selected["sites"] {
 		t.Fatalf("recommended sources missing: %v", cfg.Sources)
 	}
 	if selected["download_history"] || selected["download_files"] {
 		t.Fatalf("download history must not be part of the importer: %v", cfg.Sources)
+	}
+}
+
+func TestValidateConfigRequiresMoviePilotUsername(t *testing.T) {
+	err := validateConfig(map[string]any{"base_url": "https://mp.example"})
+	validationErr, ok := err.(*pluginsdk.ValidationError)
+	if !ok || validationErr.Fields["username"] == "" {
+		t.Fatalf("expected username validation error, got %v", err)
 	}
 }
 

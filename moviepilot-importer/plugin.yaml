@@ -1,7 +1,7 @@
 id: moviepilot-importer
 name: MoviePilot 数据导入
-version: 0.1.0
-description: 通过 Media Agent 迁移桥读取 MoviePilot 数据，并使用宿主通用站点、订阅、下载和整理能力完成导入。
+version: 0.1.1
+description: 使用 MoviePilot 管理员账号读取数据，并通过宿主通用站点、订阅和整理能力完成增量导入。
 category: automation
 tags: [moviepilot, import, migration]
 type: cli
@@ -16,7 +16,7 @@ capabilities:
 actions:
   - id: test
     name: 检测连接
-    description: 检查 MoviePilot 迁移桥地址、Token 和协议版本。
+    description: 检查 MoviePilot 地址、管理员用户名和密码。
     risk: low
   - id: sync
     name: 同步并导入
@@ -30,7 +30,7 @@ permissions:
   network:
     - configured:base_url
   secrets:
-    - plugin.moviepilot.bridge_token
+    - plugin.moviepilot.password
   data:
     - storage
   host:

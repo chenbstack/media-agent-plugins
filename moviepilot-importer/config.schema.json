@@ -5,12 +5,20 @@
       "type": "url",
       "label": "MoviePilot 地址",
       "required": true,
-      "placeholder": "https://mp.example.com"
+      "placeholder": "http://192.168.1.10:3000",
+      "help": "填写 MoviePilot 首页地址，不需要附加 /api/v1"
     },
     {
-      "name": "bridge_token",
+      "name": "username",
+      "type": "string",
+      "label": "MoviePilot 用户名",
+      "required": true,
+      "placeholder": "admin"
+    },
+    {
+      "name": "password",
       "type": "password",
-      "label": "迁移桥 Token",
+      "label": "MoviePilot 密码",
       "required": true,
       "secret": true
     },
@@ -20,9 +28,6 @@
       "label": "分页大小",
       "default": 500
     },
-    { "name": "include_system_settings", "type": "boolean", "label": "系统设置快照", "default": true },
-    { "name": "include_plugin_configs", "type": "boolean", "label": "插件配置快照", "default": true },
-    { "name": "include_plugin_data", "type": "boolean", "label": "插件数据快照", "default": true },
     { "name": "include_sites", "type": "boolean", "label": "站点", "default": true },
     { "name": "include_subscriptions", "type": "boolean", "label": "订阅", "default": true },
     { "name": "include_subscribe_history", "type": "boolean", "label": "订阅历史快照", "default": true },
