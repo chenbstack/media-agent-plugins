@@ -1,6 +1,6 @@
 id: moviepilot-importer
 name: MoviePilot 数据导入
-version: 0.1.1
+version: 0.1.2
 description: 使用 MoviePilot 管理员账号读取数据，并通过宿主通用站点、订阅和整理能力完成增量导入。
 category: automation
 tags: [moviepilot, import, migration]
@@ -20,7 +20,7 @@ actions:
     risk: low
   - id: sync
     name: 同步并导入
-    description: 分页同步所选数据，按 hash 增量写入宿主；不迁移历史下载，整理历史默认保留。
+    description: 增量导入站点、订阅和整理历史，保留订阅历史快照；不迁移历史下载。
     risk: high
   - id: status
     name: 查看状态

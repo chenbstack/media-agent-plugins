@@ -21,16 +21,6 @@
       "label": "MoviePilot 密码",
       "required": true,
       "secret": true
-    },
-    {
-      "name": "page_limit",
-      "type": "number",
-      "label": "分页大小",
-      "default": 500
-    },
-    { "name": "include_sites", "type": "boolean", "label": "站点", "default": true },
-    { "name": "include_subscriptions", "type": "boolean", "label": "订阅", "default": true },
-    { "name": "include_subscribe_history", "type": "boolean", "label": "订阅历史快照", "default": true },
-    { "name": "include_transfer_history", "type": "boolean", "label": "整理历史", "default": true }
+    }
   ]
 }

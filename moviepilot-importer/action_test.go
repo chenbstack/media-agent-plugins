@@ -7,10 +7,13 @@ import (
 	"github.com/chenbstack/media-agent-plugin-sdk-go"
 )
 
-func TestConfigDefaultsKeepTransferAndExcludeDownloadHistory(t *testing.T) {
-	cfg := parseConfig(map[string]any{"base_url": "https://mp.example", "username": "admin"})
+func TestConfigUsesFixedMigrationScope(t *testing.T) {
+	cfg := parseConfig(map[string]any{
+		"base_url": "https://mp.example", "username": "admin",
+		"include_sites": false, "include_subscriptions": false, "include_transfer_history": false,
+	})
 	selected := selectedSet(cfg.Sources)
-	if !selected["transfer_history"] || !selected["subscriptions"] || !selected["sites"] {
+	if len(selected) != 4 || !selected["transfer_history"] || !selected["subscriptions"] || !selected["subscribe_history"] || !selected["sites"] {
 		t.Fatalf("recommended sources missing: %v", cfg.Sources)
 	}
 	if selected["download_history"] || selected["download_files"] {

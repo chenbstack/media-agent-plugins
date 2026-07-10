@@ -16,32 +16,18 @@ type config struct {
 	Sources   []string
 }
 
-var sourceConfigFields = []struct {
-	Type  string
-	Field string
-}{
-	{"sites", "include_sites"},
-	{"subscriptions", "include_subscriptions"},
-	{"subscribe_history", "include_subscribe_history"},
-	{"transfer_history", "include_transfer_history"},
-}
-
 func parseConfig(values map[string]any) config {
 	out := config{
 		BaseURL:   normalizeBaseURL(stringValue(values, "base_url")),
 		Username:  stringValue(values, "username"),
 		PageLimit: intValue(values, "page_limit"),
+		Sources:   append([]string(nil), supportedSourceTypes...),
 	}
 	if out.PageLimit <= 0 {
 		out.PageLimit = 500
 	}
 	if out.PageLimit > 1000 {
 		out.PageLimit = 1000
-	}
-	for _, source := range sourceConfigFields {
-		if boolValue(values, source.Field, true) {
-			out.Sources = append(out.Sources, source.Type)
-		}
 	}
 	return out
 }
