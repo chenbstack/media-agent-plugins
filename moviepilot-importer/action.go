@@ -228,6 +228,43 @@ func (h *actionHandler) apply(ctx context.Context, item stagedItem) (pluginsdk.H
 	}
 	metadata := json.RawMessage(item.DataJSON)
 	switch item.SourceType {
+	case "rules":
+		if h.instance.Rules == nil {
+			return pluginsdk.HostWriteResult{}, fmt.Errorf("宿主未提供规则能力")
+		}
+		var bundle moviePilotRuleBundle
+		if err := json.Unmarshal([]byte(item.DataJSON), &bundle); err != nil {
+			return pluginsdk.HostWriteResult{}, fmt.Errorf("解析 MoviePilot 规则数据: %w", err)
+		}
+		catalog, err := h.instance.Rules.GetRuleCatalog(ctx)
+		if err != nil {
+			return pluginsdk.HostWriteResult{}, err
+		}
+		switch bundle.Kind {
+		case "profile":
+			conversion, err := convertMoviePilotRuleBundle(bundle, catalog)
+			if err != nil {
+				return pluginsdk.HostWriteResult{}, err
+			}
+			conversion.Write.TargetID = item.TargetID
+			return h.instance.Rules.UpsertRuleProfile(ctx, conversion.Write)
+		case "sort":
+			selected, _ := mapMoviePilotSort(bundle.Selected, catalog)
+			if _, err := h.instance.Rules.SetRuleSort(ctx, pluginsdk.RuleSortWrite{Selected: selected}); err != nil {
+				return pluginsdk.HostWriteResult{}, err
+			}
+			return pluginsdk.HostWriteResult{TargetID: "rules:global-sort", Change: "updated"}, nil
+		case "default":
+			result, err := h.instance.Rules.SetRuleDefault(ctx, pluginsdk.RuleDefaultWrite{
+				Scope: bundle.Scope, RuleProfileKey: bundle.ProfileKey,
+			})
+			if err != nil {
+				return pluginsdk.HostWriteResult{}, err
+			}
+			return pluginsdk.HostWriteResult{TargetID: "rules:default:" + result.Scope, Change: "updated"}, nil
+		default:
+			return pluginsdk.HostWriteResult{}, fmt.Errorf("未知 MoviePilot 规则数据类型 %q", bundle.Kind)
+		}
 	case "sites":
 		if h.instance.SiteAccounts == nil {
 			return pluginsdk.HostWriteResult{}, fmt.Errorf("宿主未提供站点账号能力")
@@ -253,7 +290,8 @@ func (h *actionHandler) apply(ctx context.Context, item stagedItem) (pluginsdk.H
 			TotalEpisodes:  firstPositive(intValue(data, "total_episode"), intValue(data, "manual_total_episode"), maxEpisode(stringValue(data, "lack_episode"))),
 			WantedEpisodes: wantedEpisodes(season, stringValue(data, "lack_episode")),
 			Status:         subscriptionStatus(stringValue(data, "state")), SourceName: firstNonEmpty(stringValue(data, "username"), "MoviePilot"),
-			CreatedAt: parseSourceTime(stringValue(data, "date")), Metadata: metadata,
+			RuleProfileKey: stringValue(data, ruleSelectionMetadataKey),
+			CreatedAt:      parseSourceTime(stringValue(data, "date")), Metadata: metadata,
 		})
 	case "transfer_history":
 		if h.instance.Transfers == nil {
@@ -278,7 +316,7 @@ func (h *actionHandler) apply(ctx context.Context, item stagedItem) (pluginsdk.H
 }
 
 func sourcePriority(sourceType string) int {
-	for index, source := range []string{"subscriptions", "sites", "transfer_history", "subscribe_history"} {
+	for index, source := range []string{"rules", "sites", "subscriptions", "transfer_history", "subscribe_history"} {
 		if source == sourceType {
 			return index
 		}

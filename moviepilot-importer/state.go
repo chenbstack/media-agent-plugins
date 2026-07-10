@@ -90,6 +90,7 @@ PRIMARY KEY(run_id, task_id)
 }
 
 var migrationTaskNames = map[string]string{
+	"rules":             "规则设置",
 	"sites":             "站点",
 	"subscriptions":     "订阅",
 	"subscribe_history": "订阅历史快照",

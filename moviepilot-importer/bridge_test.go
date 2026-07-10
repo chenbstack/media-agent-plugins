@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,18 @@ func TestMoviePilotClientLogsInAndPaginatesStandardAPIs(t *testing.T) {
 			_, _ = io.WriteString(w, `{"success":true,"data":{"BACKEND_VERSION":"2.9.11"}}`)
 		case "/api/v1/site/":
 			_, _ = io.WriteString(w, `[{"id":1,"name":"Site A"},{"id":2,"name":"Site B"}]`)
+		case "/api/v1/subscribe/":
+			_, _ = io.WriteString(w, `[{"id":21,"name":"Show","filter_groups":["高清"]}]`)
+		case "/api/v1/system/setting/UserFilterRuleGroups":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"value":[{"name":"高清","rule_string":"4K > 1080P","media_type":"电视剧"}]}}`)
+		case "/api/v1/system/setting/CustomFilterRules":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"value":[]}}`)
+		case "/api/v1/system/setting/SearchFilterRuleGroups", "/api/v1/system/setting/SubscribeFilterRuleGroups":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"value":["高清"]}}`)
+		case "/api/v1/system/setting/BestVersionFilterRuleGroups":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"value":null}}`)
+		case "/api/v1/system/setting/TorrentsPriority":
+			_, _ = io.WriteString(w, `{"success":true,"data":{"value":["torrent","seeder"]}}`)
 		case "/api/v1/history/transfer":
 			if r.URL.Query().Get("page") == "1" {
 				_, _ = io.WriteString(w, `{"success":true,"data":{"list":[{"id":10,"title":"A"}],"total":2}}`)
@@ -69,6 +82,22 @@ func TestMoviePilotClientLogsInAndPaginatesStandardAPIs(t *testing.T) {
 	transfers, err = client.export(context.Background(), "transfer_history", transfers.NextCursor, 1)
 	if err != nil || !transfers.Done || transfers.Items[0].SourceID != "11" {
 		t.Fatalf("transfer last page = %#v, %v", transfers, err)
+	}
+
+	rules, err := client.export(context.Background(), "rules", "", 100)
+	if err != nil || !rules.Done || rules.Total != 4 || len(rules.Items) != 4 {
+		t.Fatalf("rules page = %#v, %v", rules, err)
+	}
+	subscriptions, err := client.export(context.Background(), "subscriptions", "", 100)
+	if err != nil || len(subscriptions.Items) != 1 {
+		t.Fatalf("subscriptions page = %#v, %v", subscriptions, err)
+	}
+	var importedSubscription map[string]any
+	if err := json.Unmarshal(subscriptions.Items[0].Data, &importedSubscription); err != nil {
+		t.Fatal(err)
+	}
+	if stringValue(importedSubscription, ruleSelectionMetadataKey) != ruleProfileKey([]string{"高清"}) {
+		t.Fatalf("subscription rule key = %#v", importedSubscription)
 	}
 }
 

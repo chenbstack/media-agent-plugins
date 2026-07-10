@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var supportedSourceTypes = []string{"sites", "subscriptions", "subscribe_history", "transfer_history"}
+var supportedSourceTypes = []string{"rules", "sites", "subscriptions", "subscribe_history", "transfer_history"}
 
 type moviePilotClient struct {
 	baseURL  string
@@ -22,6 +22,7 @@ type moviePilotClient struct {
 	password string
 	token    string
 	http     *http.Client
+	rules    *moviePilotRuleData
 }
 
 type pingResult struct {
@@ -117,10 +118,12 @@ func (c *moviePilotClient) export(ctx context.Context, sourceType, cursor string
 		limit = 1000
 	}
 	switch sourceType {
+	case "rules":
+		return c.exportRules(ctx, cursor, limit)
 	case "sites":
 		return c.exportList(ctx, sourceType, "/site/", cursor, limit)
 	case "subscriptions":
-		return c.exportList(ctx, sourceType, "/subscribe/", cursor, limit)
+		return c.exportSubscriptions(ctx, cursor, limit)
 	case "subscribe_history":
 		return c.exportSubscribeHistory(ctx, cursor, limit)
 	case "transfer_history":
