@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 env:
-  PLUGINS: drive115 browser-emulator moviepilot-importer
+  PLUGINS: drive115 browser-emulator
   PLATFORMS: darwin-arm64 linux-amd64 linux-arm64
 
 jobs:
