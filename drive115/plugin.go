@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -94,9 +96,9 @@ func (p *provider) TestConnection(ctx context.Context) error {
 	parent := cleanCloudPath(p.root)
 	dirID := int64(0)
 	if parent != "/" {
-		id, err := p.client.getDirID(ctx, parent)
+		id, err := ensureRootDirectory115(ctx, parent, p.client.getDirID, p.client.mkdirAll)
 		if err != nil {
-			return fmt.Errorf("读取 115 远端根目录: %w", err)
+			return err
 		}
 		dirID = id
 	}
@@ -104,6 +106,26 @@ func (p *provider) TestConnection(ctx context.Context) error {
 		return fmt.Errorf("读取 115 目录元数据: %w", err)
 	}
 	return nil
+}
+
+func ensureRootDirectory115(
+	ctx context.Context,
+	root string,
+	lookup func(context.Context, string) (int64, error),
+	create func(context.Context, string) (int64, error),
+) (int64, error) {
+	id, err := lookup(ctx, root)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("读取 115 远端根目录: %w", err)
+	}
+	id, err = create(ctx, root)
+	if err != nil {
+		return 0, fmt.Errorf("创建 115 远端根目录: %w", err)
+	}
+	return id, nil
 }
 
 func (p *provider) Info(ctx context.Context) (providers.StorageInfo, error) {
@@ -196,7 +218,7 @@ func (p *provider) OpenReader(ctx context.Context, name string) (io.ReadCloser, 
 	if item.IsDir {
 		return nil, fmt.Errorf("%s 是目录", name)
 	}
-	downloadURL, headers, err := p.client.downloadURL(ctx, item.PickCode)
+	downloadURL, headers, err := p.client.downloadURL(ctx, item.PickCode, userAgent115)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +256,7 @@ func (p *provider) ResolvePlaybackURL(ctx context.Context, input providers.Playb
 		}
 		pickCode = item.PickCode
 	}
-	playURL, headers, err := p.client.downloadURL(ctx, pickCode)
+	playURL, headers, err := p.client.downloadURL(ctx, pickCode, playbackUserAgent115(input.Metadata))
 	if err != nil {
 		return providers.PlaybackURLResult{}, err
 	}
@@ -242,6 +264,15 @@ func (p *provider) ResolvePlaybackURL(ctx context.Context, input providers.Playb
 		URL:     playURL,
 		Headers: headers,
 	}, nil
+}
+
+func playbackUserAgent115(metadata map[string]any) string {
+	if metadata != nil {
+		if value := strings.TrimSpace(stringConfig(metadata["user_agent"])); value != "" {
+			return value
+		}
+	}
+	return userAgent115
 }
 
 func (p *provider) OpenWriter(ctx context.Context, name string) (io.WriteCloser, error) {

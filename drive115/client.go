@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -87,7 +88,7 @@ func (c *client115) listDir(ctx context.Context, cid int64) ([]item115, error) {
 	for offset := 0; ; {
 		resp := struct {
 			State any               `json:"state"`
-			ErrNo int               `json:"errno"`
+			ErrNo errno115          `json:"errno"`
 			Error string            `json:"error"`
 			Msg   string            `json:"msg"`
 			CID   json.Number       `json:"cid"`
@@ -134,10 +135,10 @@ func (c *client115) listDir(ctx context.Context, cid int64) ([]item115, error) {
 
 func (c *client115) probeDir(ctx context.Context, cid int64) error {
 	resp := struct {
-		State any    `json:"state"`
-		ErrNo int    `json:"errno"`
-		Error string `json:"error"`
-		Msg   string `json:"msg"`
+		State any      `json:"state"`
+		ErrNo errno115 `json:"errno"`
+		Error string   `json:"error"`
+		Msg   string   `json:"msg"`
 	}{}
 	query := url.Values{
 		"aid":      {"1"},
@@ -194,7 +195,7 @@ func (c *client115) getDirID(ctx context.Context, cloudPath string) (int64, erro
 	}
 	resp := struct {
 		State any         `json:"state"`
-		ErrNo int         `json:"errno"`
+		ErrNo errno115    `json:"errno"`
 		Error string      `json:"error"`
 		Msg   string      `json:"msg"`
 		ID    json.Number `json:"id"`
@@ -265,6 +266,8 @@ func (c *client115) mkdirAll(ctx context.Context, cloudPath string) (int64, erro
 	}
 	if id, err := c.getDirID(ctx, cloudPath); err == nil {
 		return id, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, err
 	}
 	parent := int64(0)
 	current := "/"
@@ -276,6 +279,8 @@ func (c *client115) mkdirAll(ctx context.Context, cloudPath string) (int64, erro
 		if id, err := c.getDirID(ctx, current); err == nil {
 			parent = id
 			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return 0, err
 		}
 		item, err := c.mkdir(ctx, parent, segment)
 		if err != nil {
@@ -291,7 +296,7 @@ func (c *client115) mkdirAll(ctx context.Context, cloudPath string) (int64, erro
 func (c *client115) mkdir(ctx context.Context, parentID int64, name string) (item115, error) {
 	resp := struct {
 		State any         `json:"state"`
-		ErrNo int         `json:"errno"`
+		ErrNo errno115    `json:"errno"`
 		Error string      `json:"error"`
 		Msg   string      `json:"msg"`
 		CID   json.Number `json:"cid"`
@@ -362,7 +367,7 @@ func (c *client115) copy(ctx context.Context, id, parentID int64) error {
 	return check115State(resp.State, resp.ErrNo, firstNonEmpty(resp.Error, resp.Msg))
 }
 
-func (c *client115) downloadURL(ctx context.Context, pickCode string) (string, map[string]string, error) {
+func (c *client115) downloadURL(ctx context.Context, pickCode, userAgent string) (string, map[string]string, error) {
 	if pickCode == "" {
 		return "", nil, fmt.Errorf("115 文件缺少 pickcode")
 	}
@@ -380,13 +385,17 @@ func (c *client115) downloadURL(ctx context.Context, pickCode string) (string, m
 	}
 	resp := struct {
 		State any             `json:"state"`
-		ErrNo int             `json:"errno"`
+		ErrNo errno115        `json:"errno"`
 		Error string          `json:"error"`
 		Msg   string          `json:"msg"`
 		Data  json.RawMessage `json:"data"`
 	}{}
 	form := url.Values{"data": {string(encrypted)}}
-	if err := c.doJSON(ctx, http.MethodPost, proAPIBase+"/app/chrome/downurl", nil, form, &resp); err != nil {
+	userAgent = strings.TrimSpace(userAgent)
+	if userAgent == "" {
+		userAgent = userAgent115
+	}
+	if err := c.doJSONWithUserAgent(ctx, http.MethodPost, proAPIBase+"/app/chrome/downurl", nil, form, &resp, userAgent); err != nil {
 		return "", nil, err
 	}
 	if err := check115State(resp.State, resp.ErrNo, firstNonEmpty(resp.Error, resp.Msg)); err != nil {
@@ -411,13 +420,13 @@ func (c *client115) downloadURL(ctx context.Context, pickCode string) (string, m
 		if single.URL == "" {
 			return "", nil, fmt.Errorf("115 下载链接为空")
 		}
-		return single.URL, map[string]string{"User-Agent": userAgent115}, nil
+		return single.URL, map[string]string{"User-Agent": userAgent}, nil
 	}
 	for _, info := range data {
 		if info.URL.URL == "" {
 			return "", nil, fmt.Errorf("115 下载链接为空")
 		}
-		return info.URL.URL, map[string]string{"User-Agent": userAgent115}, nil
+		return info.URL.URL, map[string]string{"User-Agent": userAgent}, nil
 	}
 	return "", nil, fmt.Errorf("115 下载链接响应为空")
 }
@@ -429,13 +438,54 @@ type downloadInfo115 struct {
 }
 
 type simple115Response struct {
-	State any    `json:"state"`
-	ErrNo int    `json:"errno"`
-	Error string `json:"error"`
-	Msg   string `json:"msg"`
+	State any      `json:"state"`
+	ErrNo errno115 `json:"errno"`
+	Error string   `json:"error"`
+	Msg   string   `json:"msg"`
+}
+
+type errno115 int
+
+func (e *errno115) UnmarshalJSON(data []byte) error {
+	var raw any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	switch value := raw.(type) {
+	case nil:
+		*e = 0
+		return nil
+	case json.Number:
+		n, err := value.Int64()
+		if err != nil {
+			return fmt.Errorf("解析 115 errno: %w", err)
+		}
+		*e = errno115(n)
+		return nil
+	case string:
+		value = strings.TrimSpace(value)
+		if value == "" {
+			*e = 0
+			return nil
+		}
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("解析 115 errno %q: %w", value, err)
+		}
+		*e = errno115(n)
+		return nil
+	default:
+		return fmt.Errorf("解析 115 errno: 不支持的类型 %T", raw)
+	}
 }
 
 func (c *client115) doJSON(ctx context.Context, method, endpoint string, query url.Values, form url.Values, out any) error {
+	return c.doJSONWithUserAgent(ctx, method, endpoint, query, form, out, userAgent115)
+}
+
+func (c *client115) doJSONWithUserAgent(ctx context.Context, method, endpoint string, query url.Values, form url.Values, out any, userAgent string) error {
 	if err := c.lim.acquire(ctx); err != nil {
 		return err
 	}
@@ -451,7 +501,11 @@ func (c *client115) doJSON(ctx context.Context, method, endpoint string, query u
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", userAgent115)
+	userAgent = strings.TrimSpace(userAgent)
+	if userAgent == "" {
+		userAgent = userAgent115
+	}
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Cookie", c.cookie)
 	if form != nil {
@@ -507,7 +561,8 @@ func parseItem(raw json.RawMessage) (item115, error) {
 	return item, nil
 }
 
-func check115State(state any, errno int, message string) error {
+func check115State(state any, errnoValue any, message string) error {
+	errno := int(int64FromAny(errnoValue))
 	ok := true
 	switch v := state.(type) {
 	case nil:
@@ -663,6 +718,8 @@ func int64FromAny(value any) int64 {
 	case int64:
 		return v
 	case int:
+		return int64(v)
+	case errno115:
 		return int64(v)
 	case string:
 		cleaned := strings.ReplaceAll(strings.TrimSpace(v), ",", "")

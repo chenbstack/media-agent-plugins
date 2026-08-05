@@ -134,10 +134,10 @@ type qrToken115 struct {
 
 func requestQRCodeToken115(ctx context.Context) (qrToken115, error) {
 	var resp struct {
-		State any    `json:"state"`
-		ErrNo int    `json:"errno"`
-		Error string `json:"error"`
-		Msg   string `json:"msg"`
+		State any      `json:"state"`
+		ErrNo errno115 `json:"errno"`
+		Error string   `json:"error"`
+		Msg   string   `json:"msg"`
 		Data  struct {
 			UID    string `json:"uid"`
 			Time   any    `json:"time"`
@@ -170,7 +170,7 @@ func requestQRCodeToken115(ctx context.Context) (qrToken115, error) {
 func requestQRCodeStatus115(ctx context.Context, session qrAuthSession115) (int64, string, error) {
 	var resp struct {
 		State  any             `json:"state"`
-		ErrNo  int             `json:"errno"`
+		ErrNo  errno115        `json:"errno"`
 		Error  string          `json:"error"`
 		Msg    string          `json:"msg"`
 		Status any             `json:"status"`
@@ -215,10 +215,10 @@ func requestQRCodeCookie115(ctx context.Context, uid, app string) (string, error
 		app = qrAuthCookieApp115
 	}
 	var resp struct {
-		State any    `json:"state"`
-		ErrNo int    `json:"errno"`
-		Error string `json:"error"`
-		Msg   string `json:"msg"`
+		State any      `json:"state"`
+		ErrNo errno115 `json:"errno"`
+		Error string   `json:"error"`
+		Msg   string   `json:"msg"`
 		Data  struct {
 			Cookie any `json:"cookie"`
 		} `json:"data"`

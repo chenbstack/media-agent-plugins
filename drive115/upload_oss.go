@@ -44,7 +44,7 @@ type uploadCallback115 struct {
 
 type uploadInit115 struct {
 	State      any               `json:"state"`
-	ErrNo      int               `json:"errno"`
+	ErrNo      errno115          `json:"errno"`
 	Error      string            `json:"error"`
 	Msg        string            `json:"msg"`
 	Status     int               `json:"status"`
