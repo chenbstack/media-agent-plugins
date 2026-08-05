@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 env:
-  PLUGINS: drive115 browser-emulator
+  PLUGINS: drive115 browser-emulator emby302
   PLATFORMS: darwin-arm64 linux-amd64 linux-arm64
 
 jobs:
@@ -120,6 +120,11 @@ jobs:
               echo "::error file=$plugin/plugin.yaml::missing version"
               exit 1
             fi
+            plugin_id="$(awk '$1 == "id:" { gsub(/"/, "", $2); print $2; exit }' "$plugin/plugin.yaml")"
+            if [ -z "$plugin_id" ]; then
+              echo "::error file=$plugin/plugin.yaml::missing plugin id"
+              exit 1
+            fi
 
             for platform in $PLATFORMS; do
               archive="dist/$plugin-v$version-$platform.tar.gz"
@@ -128,7 +133,19 @@ jobs:
                 exit 1
               fi
 
-              binary="$plugin/bin/media-agent-plugin-$plugin-$platform"
+              archive_roots="$(tar -tzf "$archive" | awk -F/ 'NF && $1 != "" { print $1 }' | sort -u)"
+              if [ "$archive_roots" != "$plugin_id" ]; then
+                echo "::error file=$archive::top-level directory must be plugin id $plugin_id, got: $archive_roots"
+                exit 1
+              fi
+
+              manifest="$plugin_id/plugin.yaml"
+              if ! tar -tzf "$archive" | grep -Fx "$manifest" >/dev/null; then
+                echo "::error file=$archive::missing $manifest"
+                exit 1
+              fi
+
+              binary="$plugin_id/bin/media-agent-plugin-$plugin-$platform"
               # Consume the full tar listing: grep -q can SIGPIPE GNU tar under pipefail.
               if ! tar -tzf "$archive" | grep -Fx "$binary" >/dev/null; then
                 echo "::error file=$archive::missing $binary"

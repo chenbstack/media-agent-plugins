@@ -4,9 +4,9 @@
 # 每个 插件 × 平台 产出一个包：dist/<插件目录名>-v<版本>-<os>-<arch>.tar.gz
 # 完整插件目录由 scripts/package-manifests.sh 单独生成，避免增量构建时只把
 # 本次变化的插件写入 manifests.tar.gz。
-# 包内是一层以插件目录名命名的顶级目录，内容与宿主安装目录
+# 包内是一层以 manifest 插件 ID 命名的顶级目录，内容与宿主安装目录
 # （media-agent-lab/server/plugins/<id>/）完全一致：
-#   <插件目录名>/
+#   <插件 ID>/
 #     plugin.yaml
 #     icon.svg              （存在才打包）
 #     config.schema.json    （存在才打包）
@@ -41,6 +41,13 @@ for plugin in "$@"; do
         echo "错误: 无法从 $plugin/plugin.yaml 解析 version" >&2
         exit 1
     fi
+    plugin_id="$(awk '$1 == "id:" { gsub(/"/, "", $2); print $2; exit }' "$src/plugin.yaml")"
+    case "$plugin_id" in
+        ""|.*|*[!A-Za-z0-9._-]*)
+            echo "错误: $plugin/plugin.yaml 包含无效插件 ID: ${plugin_id:-<空>}" >&2
+            exit 1
+            ;;
+    esac
 
     for platform in $PLATFORMS; do
         goos="${platform%-*}"
@@ -54,14 +61,14 @@ for plugin in "$@"; do
 
         stage="$(mktemp -d)"
         trap 'rm -rf "$stage"' EXIT
-        mkdir -p "$stage/$plugin/bin"
-        cp "$src/plugin.yaml" "$stage/$plugin/"
-        [ -f "$src/icon.svg" ] && cp "$src/icon.svg" "$stage/$plugin/"
-        [ -f "$src/config.schema.json" ] && cp "$src/config.schema.json" "$stage/$plugin/"
-        cp "$src/bin/$binary" "$stage/$plugin/bin/"
+        mkdir -p "$stage/$plugin_id/bin"
+        cp "$src/plugin.yaml" "$stage/$plugin_id/"
+        [ -f "$src/icon.svg" ] && cp "$src/icon.svg" "$stage/$plugin_id/"
+        [ -f "$src/config.schema.json" ] && cp "$src/config.schema.json" "$stage/$plugin_id/"
+        cp "$src/bin/$binary" "$stage/$plugin_id/bin/"
 
         out="$DIST/$plugin-v$version-$platform.tar.gz"
-        tar -czf "$out" -C "$stage" "$plugin"
+        tar -czf "$out" -C "$stage" "$plugin_id"
         rm -rf "$stage"
         trap - EXIT
         echo "    -> ${out#"$ROOT"/}"

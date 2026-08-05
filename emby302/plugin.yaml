@@ -1,0 +1,26 @@
+id: emby302
+name: Emby 302
+version: 0.1.0
+description: 通过 Media Agent 插件路径反向代理 Emby Web，支持 STRM 直链 302、DirectPlay 和浏览器跨域兼容。
+category: media-server
+tags: [emby, strm, 302, reverse-proxy]
+type: cli
+entry:
+  darwin-arm64: bin/media-agent-plugin-emby302-darwin-arm64
+  linux-amd64: bin/media-agent-plugin-emby302-linux-amd64
+  linux-arm64: bin/media-agent-plugin-emby302-linux-arm64
+capabilities:
+  - service.http
+permissions:
+  network:
+    - "configured:emby_connection_id"
+  host:
+    - "connections.read"
+resources:
+  memory_limit_mb: 256
+  idle_timeout_seconds: 0
+http_services:
+  - name: emby
+    methods: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS]
+    streaming: true
+    websocket: true

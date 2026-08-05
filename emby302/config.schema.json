@@ -1,0 +1,25 @@
+{
+  "fields": [
+    {
+      "name": "emby_connection_id",
+      "type": "select",
+      "label": "Emby 连接",
+      "required": true,
+      "help": "复用系统设置中已有的 Emby 连接。服务默认使用 Media Agent 当前访问地址，并挂载到 /api/v1/plugins/emby302/emby。",
+      "ui": { "browse": "connection.media_server.emby" }
+    },
+    {
+      "name": "redirect_cache_seconds",
+      "type": "number",
+      "label": "直链缓存时间",
+      "default": 60,
+      "help": "同一播放器短时间重复请求时复用已解析的 CDN 地址，建议保持 60 秒。"
+    },
+    {
+      "name": "public_host",
+      "type": "string",
+      "label": "旧版独立访问域名",
+      "retired": true
+    }
+  ]
+}
