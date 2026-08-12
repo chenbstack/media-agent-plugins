@@ -29,6 +29,38 @@ func TestUnderChallenge(t *testing.T) {
 	}
 }
 
+func TestUnderTurnstileSearchGate(t *testing.T) {
+	cases := []struct {
+		name string
+		html string
+		want bool
+	}{
+		{
+			name: "Audience 搜索验证空壳",
+			html: `<div class="cf-turnstile"></div><button class="js-torrent-search-submit" disabled></button><script>fetch('/torrentscf.php')</script>`,
+			want: true,
+		},
+		{
+			name: "Turnstile 脚本和搜索回调",
+			html: `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script><script>fetch('/torrentscf.php')</script>`,
+			want: true,
+		},
+		{
+			name: "已显示种子列表",
+			html: `<div class="cf-turnstile"></div><script>fetch('/torrentscf.php')</script><table class="torrents-table"></table>`,
+			want: false,
+		},
+		{name: "普通搜索页", html: `<table class="torrents-table"></table>`, want: false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := underTurnstileSearchGate(c.html); got != c.want {
+				t.Fatalf("underTurnstileSearchGate() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeWaitUntil(t *testing.T) {
 	cases := map[string]waitUntilState{
 		"":                 waitDomContentLoaded,

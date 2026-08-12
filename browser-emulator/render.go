@@ -35,6 +35,18 @@ func underChallenge(html string) bool {
 	return false
 }
 
+// underTurnstileSearchGate 识别返回 HTTP 200 的站内 Turnstile 搜索空壳。
+// 这类页面不是 Cloudflare 的经典挑战页：验证回调会先请求 torrentscf.php，
+// 成功后才允许重新加载真正的种子列表。
+func underTurnstileSearchGate(html string) bool {
+	lower := strings.ToLower(html)
+	hasTurnstile := strings.Contains(lower, "cf-turnstile") ||
+		strings.Contains(lower, "challenges.cloudflare.com/turnstile")
+	hasSearchGate := strings.Contains(lower, "/torrentscf.php") ||
+		strings.Contains(lower, "js-torrent-search-submit")
+	return hasTurnstile && hasSearchGate && !strings.Contains(lower, "torrents-table")
+}
+
 // renderWithCDP 是所有后端共用的渲染主逻辑：拿到一个 CDP allocator context
 // （由各后端准备：lightweight 接 Lightpanda 的远端 CDP、chromium 由 chromedp
 // 启动隐身 Chromium/CloakBrowser）后，注入 cookie/UA/headers 打开页面，按 WaitUntil/WaitSelector 等待，
@@ -105,13 +117,6 @@ func renderWithCDP(allocCtx context.Context, cfg Config, req providers.RenderReq
 		return providers.RenderResult{}, err
 	}
 
-	// 显式等待选择器出现后再取快照。
-	if sel := strings.TrimSpace(req.WaitSelector); sel != "" {
-		if err := waitSelector(ctx, sel, timeout); err != nil {
-			return providers.RenderResult{}, fmt.Errorf("等待选择器 %q 超时: %w", sel, err)
-		}
-	}
-
 	html, err := outerHTML(ctx)
 	if err != nil {
 		return providers.RenderResult{}, fmt.Errorf("读取页面 HTML 失败: %w", err)
@@ -119,6 +124,42 @@ func renderWithCDP(allocCtx context.Context, cfg Config, req providers.RenderReq
 	// Cloudflare / DDoS-GUARD 挑战页启发式：仍是挑战页则轮询等待挑战清除。
 	if underChallenge(html) {
 		html = waitForChallengeCleared(ctx, timeout, html)
+	}
+	// Audience 等站点把 Turnstile 放在搜索页内部。等待验证回调完成后必须在
+	// 同一浏览器上下文重载，服务器才会返回本次搜索的真实结果。
+	if underTurnstileSearchGate(html) {
+		if err := waitForTurnstileVerified(ctx, timeout); err != nil {
+			return providers.RenderResult{}, fmt.Errorf("Cloudflare Turnstile 验证未完成；请将浏览器仿真后端切换为 Cloak（隐身 Chromium）后重试: %w", err)
+		}
+		drainSignal(domFired)
+		drainSignal(loadFired)
+		if err := chromedp.Run(ctx, chromedp.Reload()); err != nil {
+			return providers.RenderResult{}, fmt.Errorf("Cloudflare Turnstile 验证完成后重载页面失败: %w", err)
+		}
+		if err := waitLifecycle(ctx, req.WaitUntil, domFired, loadFired, timeout); err != nil {
+			return providers.RenderResult{}, fmt.Errorf("Cloudflare Turnstile 验证完成后等待页面重载失败: %w", err)
+		}
+		html, err = outerHTML(ctx)
+		if err != nil {
+			return providers.RenderResult{}, fmt.Errorf("读取 Turnstile 验证后的页面 HTML 失败: %w", err)
+		}
+		if underChallenge(html) {
+			html = waitForChallengeCleared(ctx, timeout, html)
+		}
+		if underTurnstileSearchGate(html) {
+			return providers.RenderResult{}, fmt.Errorf("Cloudflare Turnstile 验证后重载仍停留在验证页；请确认已使用 Cloak（隐身 Chromium）后端")
+		}
+	}
+
+	// 挑战与验证处理完成后再等待业务选择器，避免验证空壳让最终选择器提前超时。
+	if sel := strings.TrimSpace(req.WaitSelector); sel != "" {
+		if err := waitSelector(ctx, sel, timeout); err != nil {
+			return providers.RenderResult{}, fmt.Errorf("等待选择器 %q 超时: %w", sel, err)
+		}
+		html, err = outerHTML(ctx)
+		if err != nil {
+			return providers.RenderResult{}, fmt.Errorf("读取页面 HTML 失败: %w", err)
+		}
 	}
 
 	finalURL := req.URL
@@ -137,6 +178,34 @@ func renderWithCDP(allocCtx context.Context, cfg Config, req providers.RenderReq
 		Status:   status,
 		Cookies:  outCookies,
 	}, nil
+}
+
+// waitForTurnstileVerified 等待站点的验证回调完成。若页面带搜索按钮，必须等
+// 按钮解除 disabled（Audience 在 torrentscf.php 返回成功后才会解除）；其他页面
+// 则以 Turnstile response token 已写入作为完成信号。
+func waitForTurnstileVerified(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	const expr = `(() => {
+		const button = document.querySelector('.js-torrent-search-submit');
+		if (button) return !button.disabled;
+		const response = document.querySelector('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]');
+		return !!response && String(response.value || '').trim().length > 0;
+	})()`
+	for time.Now().Before(deadline) {
+		var verified bool
+		if err := chromedp.Run(ctx, chromedp.Evaluate(expr, &verified)); err != nil {
+			return err
+		}
+		if verified {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("等待验证回调超时")
 }
 
 // waitLifecycle 按 WaitUntil 语义等待页面事件。
@@ -313,6 +382,16 @@ func trySignal(ch chan struct{}) {
 	select {
 	case ch <- struct{}{}:
 	default:
+	}
+}
+
+func drainSignal(ch chan struct{}) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
 	}
 }
 
