@@ -55,10 +55,13 @@ func TestProxyPatchesWebAndRedirectsRemoteSTRM(t *testing.T) {
 		if r.UserAgent() != userAgent {
 			t.Errorf("gateway User-Agent = %q", r.UserAgent())
 		}
+		if r.URL.Query().Get("redirect") != "1" {
+			t.Errorf("gateway redirect query = %q", r.URL.Query().Get("redirect"))
+		}
 		http.Redirect(w, r, cdn.URL+"/movie.mp4", http.StatusFound)
 	}))
 	defer gateway.Close()
-	redirectBase = gateway.URL + "/play"
+	redirectBase = gateway.URL + "/api/v1/play/redirect?sig=s&storage_id=s&path=p"
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch strings.ToLower(r.URL.Path) {

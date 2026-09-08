@@ -1,6 +1,6 @@
 id: "115"
 name: 115 网盘
-version: 0.4.5
+version: 0.4.7
 description: 通过 115 Cookie 直接调用网盘文件接口，支持扫码登录、插件内健康检查、读取、302 播放直链解析、秒传/二次校验/断点分片上传、同盘复制和移动。
 category: storage
 tags: [115, cloud-drive]
@@ -22,6 +22,9 @@ capabilities:
   - storage.operation.server_copy
   - storage.operation.move
   - storage.auth.qrcode
+  # 进程跨操作常驻：一次目录浏览要发几十个 RPC，每次都重新 fork
+  # 进程的话光起进程就吃掉绝大部分耗时。
+  - lifecycle.resident
 permissions:
   network:
     - "115.com"

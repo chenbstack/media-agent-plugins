@@ -297,7 +297,23 @@ func (s *proxyService) resolveRedirect(ctx context.Context, rawURL, userAgent st
 		return entry.url, nil
 	}
 	s.mu.Unlock()
+	isGateway := isMediaAgentPlaybackURL(rawURL)
+	if isGateway {
+		u, err := url.Parse(rawURL)
+		if err != nil {
+			return "", err
+		}
+		query := u.Query()
+		if strings.TrimSpace(query.Get("redirect")) == "" {
+			query.Set("redirect", "1")
+		}
+		u.RawQuery = query.Encode()
+		rawURL = u.String()
+	}
 	client := &http.Client{Transport: s.transport, Timeout: 25 * time.Second}
+	if isGateway {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	resolve := func(method string) (string, error) {
 		request, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
 		if err != nil {
@@ -312,6 +328,20 @@ func (s *proxyService) resolveRedirect(ctx context.Context, rawURL, userAgent st
 			return "", err
 		}
 		defer response.Body.Close()
+		if isGateway {
+			if response.StatusCode < 300 || response.StatusCode >= 400 {
+				return "", fmt.Errorf("网关 HTTP %d", response.StatusCode)
+			}
+			location, err := response.Location()
+			if err != nil {
+				return "", fmt.Errorf("网关未返回 Location")
+			}
+			finalURL := location.String()
+			if !isHTTPURL(finalURL) {
+				return "", fmt.Errorf("最终地址无效")
+			}
+			return finalURL, nil
+		}
 		if response.StatusCode < 200 || response.StatusCode >= 400 {
 			return "", fmt.Errorf("HTTP %d", response.StatusCode)
 		}
@@ -322,7 +352,7 @@ func (s *proxyService) resolveRedirect(ctx context.Context, rawURL, userAgent st
 		return finalURL, nil
 	}
 	finalURL, err := resolve(http.MethodHead)
-	if err != nil {
+	if err != nil && !isGateway {
 		finalURL, err = resolve(http.MethodGet)
 	}
 	if err != nil {
@@ -333,6 +363,14 @@ func (s *proxyService) resolveRedirect(ctx context.Context, rawURL, userAgent st
 	s.pruneLocked(now)
 	s.mu.Unlock()
 	return finalURL, nil
+}
+
+func isMediaAgentPlaybackURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/api/v1/play/redirect")
 }
 
 func (s *proxyService) pruneLocked(now time.Time) {

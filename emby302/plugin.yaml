@@ -1,6 +1,6 @@
 id: emby302
 name: Emby 302
-version: 0.1.0
+version: 0.1.1
 description: 通过 Media Agent 插件路径反向代理 Emby Web，支持 STRM 直链 302、DirectPlay 和浏览器跨域兼容。
 category: media-server
 tags: [emby, strm, 302, reverse-proxy]

@@ -420,13 +420,13 @@ func (c *client115) downloadURL(ctx context.Context, pickCode, userAgent string)
 		if single.URL == "" {
 			return "", nil, fmt.Errorf("115 下载链接为空")
 		}
-		return single.URL, map[string]string{"User-Agent": userAgent}, nil
+		return single.URL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
 	}
 	for _, info := range data {
 		if info.URL.URL == "" {
 			return "", nil, fmt.Errorf("115 下载链接为空")
 		}
-		return info.URL.URL, map[string]string{"User-Agent": userAgent}, nil
+		return info.URL.URL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
 	}
 	return "", nil, fmt.Errorf("115 下载链接响应为空")
 }
