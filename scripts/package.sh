@@ -15,13 +15,13 @@
 # 因此安装即解压：tar -xzf xxx.tar.gz -C <宿主>/server/plugins/
 #
 # 用法：scripts/package.sh <插件目录名>... （由根 Makefile 调用）
-# 环境变量：PLATFORMS 覆盖平台列表，默认 "darwin-arm64 linux-amd64 linux-arm64"
+# 环境变量：PLATFORMS 覆盖平台列表，默认 "linux-amd64 linux-arm64"
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
-PLATFORMS="${PLATFORMS:-darwin-arm64 linux-amd64 linux-arm64}"
+PLATFORMS="${PLATFORMS:-linux-amd64 linux-arm64}"
 
 if [ "$#" -eq 0 ]; then
     echo "用法: $0 <插件目录名>..." >&2

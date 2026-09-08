@@ -10,7 +10,7 @@
 # 一次下载全部插件元数据。
 
 PLUGINS   ?= drive115 browser-emulator emby302
-PLATFORMS ?= darwin-arm64 linux-amd64 linux-arm64
+PLATFORMS ?= linux-amd64 linux-arm64
 
 .PHONY: build package package-archives package-manifests test vet clean
 

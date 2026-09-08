@@ -16,7 +16,7 @@ DIST="$ROOT/dist"
 BASE_REF="${BASE_REF:-}"
 FULL_SNAPSHOT="${FULL_SNAPSHOT:-0}"
 REUSE_RELEASE_TAG="${REUSE_RELEASE_TAG:-}"
-PLATFORMS="${PLATFORMS:-darwin-arm64 linux-amd64 linux-arm64}"
+PLATFORMS="${PLATFORMS:-linux-amd64 linux-arm64}"
 
 if [ "$#" -eq 0 ]; then
     echo "用法: $0 <插件目录名>..." >&2
