@@ -108,7 +108,7 @@ func TestProxyPatchesWebAndRedirectsRemoteSTRM(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusFound || response.Header.Get("Location") != cdn.URL+"/movie.mp4" {
+	if response.StatusCode != http.StatusFound || response.Header.Get("Location") != redirectBase {
 		t.Fatalf("redirect = %d %q", response.StatusCode, response.Header.Get("Location"))
 	}
 

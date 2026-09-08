@@ -149,6 +149,15 @@ func (s *proxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		if itemID, sourceID, ok := mediaRequest(r); ok {
 			if sourceURL := s.sourceURL(itemID, sourceID); sourceURL != "" {
+				// Keep the Media Agent gateway URL intact. Resolving it here would
+				// turn the response into the provider's final CDN URL and discard
+				// provider-supplied headers (for example the 115 Cookie), so the
+				// subsequent Emby Range requests would bypass the host proxy.
+				if isMediaAgentPlaybackURL(sourceURL) {
+					w.Header().Set("Cache-Control", "no-store")
+					http.Redirect(w, r, sourceURL, http.StatusFound)
+					return
+				}
 				if finalURL, err := s.resolveRedirect(r.Context(), sourceURL, r.UserAgent()); err == nil {
 					w.Header().Set("Cache-Control", "no-store")
 					http.Redirect(w, r, finalURL, http.StatusFound)
