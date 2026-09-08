@@ -54,13 +54,10 @@ jobs:
 
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             full_snapshot=1
-            while IFS= read -r candidate; do
-              if [ -n "$candidate" ] && [ "$candidate" != "$GITHUB_REF_NAME" ]; then
-                reuse_release_tag="$candidate"
-                break
-              fi
-            done < <(gh release list --limit 100 --json tagName --jq '.[].tagName')
-            base_ref="$reuse_release_tag"
+            # 标签发布始终从当前提交完整重建，避免依赖 gh release list
+            # 查询旧 Release（该查询在部分 GitHub Actions 权限上下文中不可用）。
+            base_ref=""
+            reuse_release_tag=""
           elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             base_ref="$PR_BASE_SHA"
           elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
