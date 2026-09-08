@@ -186,7 +186,7 @@ jobs:
       - name: Notify Media Agent Cloud
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          CLOUD_BASE_URL: ${{ vars.CLOUD_BASE_URL || 'https://mac.s.puzizi.cn' }}
+          CLOUD_BASE_URL: ${{ vars.CLOUD_BASE_URL || 'https://media-agent.dev' }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         shell: bash
         run: |
