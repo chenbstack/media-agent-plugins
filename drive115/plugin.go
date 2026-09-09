@@ -28,9 +28,12 @@ var iconSVG []byte
 
 func Plugin() pluginsdk.Plugin {
 	return pluginsdk.Plugin{
-		Manifest:       pluginsdk.MustParseManifest(manifestYAML),
-		ConfigSchema:   pluginsdk.MustParseConfigSchema(schemaJSON),
-		IconSVG:        iconSVG,
+		Manifest:     pluginsdk.MustParseManifest(manifestYAML),
+		ConfigSchema: pluginsdk.MustParseConfigSchema(schemaJSON),
+		IconSVG:      iconSVG,
+		// The plugin process is resident. Keep the 115 client, its path/item
+		// caches, rate limiter, and HTTP connection pool across RPC calls.
+		ReuseProviders: true,
 		NewStorage:     newStorage,
 		StartAuth:      startAuth,
 		CheckAuth:      checkAuth,

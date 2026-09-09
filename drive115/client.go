@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -422,13 +423,37 @@ func (c *client115) downloadURL(ctx context.Context, pickCode, userAgent string)
 		}
 		return single.URL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
 	}
-	for _, info := range data {
-		if info.URL.URL == "" {
-			return "", nil, fmt.Errorf("115 下载链接为空")
-		}
-		return info.URL.URL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
+	playURL, err := selectDownloadURL(data, pickCode)
+	if err != nil {
+		return "", nil, err
 	}
-	return "", nil, fmt.Errorf("115 下载链接响应为空")
+	return playURL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
+}
+
+func selectDownloadURL(data map[string]downloadInfo115, pickCode string) (string, error) {
+	// The normal response is keyed by the requested pickcode. Prefer that
+	// entry; if 115 returns an alias key, choose a stable non-empty entry
+	// rather than relying on Go's randomized map iteration.
+	if info, ok := data[pickCode]; ok {
+		if info.URL.URL == "" {
+			return "", fmt.Errorf("115 下载链接为空")
+		}
+		return info.URL.URL, nil
+	}
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if info := data[key]; info.URL.URL != "" {
+			return info.URL.URL, nil
+		}
+	}
+	if len(data) > 0 {
+		return "", fmt.Errorf("115 下载链接为空")
+	}
+	return "", fmt.Errorf("115 下载链接响应为空")
 }
 
 type downloadInfo115 struct {

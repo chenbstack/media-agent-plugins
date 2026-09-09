@@ -58,3 +58,30 @@ func TestPlaybackUserAgent115(t *testing.T) {
 		t.Fatalf("fallback User-Agent = %q", got)
 	}
 }
+
+func Test115PluginReusesResidentProviders(t *testing.T) {
+	if !Plugin().ReuseProviders {
+		t.Fatal("115 resident plugin must reuse providers across RPC calls")
+	}
+}
+
+func TestSelectDownloadURLPrefersPickcodeAndIsDeterministic(t *testing.T) {
+	entry := func(raw string) downloadInfo115 {
+		var info downloadInfo115
+		info.URL.URL = raw
+		return info
+	}
+	if got, err := selectDownloadURL(map[string]downloadInfo115{
+		"z":      entry("https://cdn.example/z"),
+		"pick-1": entry("https://cdn.example/pick"),
+		"a":      entry("https://cdn.example/a"),
+	}, "pick-1"); err != nil || got != "https://cdn.example/pick" {
+		t.Fatalf("pickcode URL = %q, err=%v", got, err)
+	}
+	if got, err := selectDownloadURL(map[string]downloadInfo115{
+		"z": entry("https://cdn.example/z"),
+		"a": entry("https://cdn.example/a"),
+	}, "missing"); err != nil || got != "https://cdn.example/a" {
+		t.Fatalf("deterministic fallback URL = %q, err=%v", got, err)
+	}
+}
