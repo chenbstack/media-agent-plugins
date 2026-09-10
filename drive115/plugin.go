@@ -244,11 +244,33 @@ func (p *provider) OpenReader(ctx context.Context, name string) (io.ReadCloser, 
 }
 
 func (p *provider) ResolvePlaybackURL(ctx context.Context, input providers.PlaybackURLInput) (providers.PlaybackURLResult, error) {
+	started := time.Now()
+	timing := &playbackResolveTiming{}
+	ctx = withPlaybackTiming(ctx, timing)
 	pickCode := firstNonEmpty(
 		stringConfig(input.Metadata["pickcode"]),
 		stringConfig(input.Metadata["pick_code"]),
 		stringConfig(input.Metadata["pc"]),
 	)
+	pickCodeProvided := pickCode != ""
+	defer func() {
+		if p.logger == nil {
+			return
+		}
+		p.logger.Info(ctx, "115 换直链耗时",
+			"getid_ms", timing.getIDMs,
+			"getid_calls", timing.getIDCalls,
+			"getid_cache_hits", timing.getIDCacheHits,
+			"listdir_ms", timing.listDirMs,
+			"listdir_calls", timing.listDirCalls,
+			"downurl_ms", timing.downurlMs,
+			"downurl_calls", timing.downurlCalls,
+			"rate_limit_wait_ms", timing.rateLimitWaitMs,
+			"item_cache_hit", timing.itemCacheHit,
+			"pickcode_provided", pickCodeProvided,
+			"elapsed_ms", time.Since(started).Milliseconds(),
+		)
+	}()
 	if pickCode == "" {
 		item, err := p.item(ctx, input.Path)
 		if err != nil {
@@ -264,8 +286,9 @@ func (p *provider) ResolvePlaybackURL(ctx context.Context, input providers.Playb
 		return providers.PlaybackURLResult{}, err
 	}
 	return providers.PlaybackURLResult{
-		URL:     playURL,
-		Headers: headers,
+		URL:       playURL,
+		ExpiresAt: time.Now().Add(playbackURLTTL115),
+		Headers:   headers,
 	}, nil
 }
 

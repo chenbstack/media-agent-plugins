@@ -41,6 +41,29 @@ type client115 struct {
 	token       ossToken115
 }
 
+type playbackResolveTiming struct {
+	getIDMs         int64
+	listDirMs       int64
+	downurlMs       int64
+	rateLimitWaitMs int64
+	getIDCalls      int
+	getIDCacheHits  int
+	listDirCalls    int
+	downurlCalls    int
+	itemCacheHit    bool
+}
+
+type playbackTimingCtxKey struct{}
+
+func withPlaybackTiming(ctx context.Context, timing *playbackResolveTiming) context.Context {
+	return context.WithValue(ctx, playbackTimingCtxKey{}, timing)
+}
+
+func playbackTimingFrom(ctx context.Context) *playbackResolveTiming {
+	timing, _ := ctx.Value(playbackTimingCtxKey{}).(*playbackResolveTiming)
+	return timing
+}
+
 type item115 struct {
 	ID       int64
 	ParentID int64
@@ -85,6 +108,13 @@ func newClient115(cookie string, httpClient *http.Client, kv pluginsdk.KVStore) 
 }
 
 func (c *client115) listDir(ctx context.Context, cid int64) ([]item115, error) {
+	started := time.Now()
+	defer func() {
+		if timing := playbackTimingFrom(ctx); timing != nil {
+			timing.listDirCalls++
+			timing.listDirMs += time.Since(started).Milliseconds()
+		}
+	}()
 	var out []item115
 	for offset := 0; ; {
 		resp := struct {
@@ -187,11 +217,24 @@ func (c *client115) quota(ctx context.Context) (total int64, used int64, err err
 }
 
 func (c *client115) getDirID(ctx context.Context, cloudPath string) (int64, error) {
+	started := time.Now()
+	cacheHit := false
+	defer func() {
+		if timing := playbackTimingFrom(ctx); timing != nil {
+			timing.getIDCalls++
+			timing.getIDMs += time.Since(started).Milliseconds()
+			if cacheHit {
+				timing.getIDCacheHits++
+			}
+		}
+	}()
 	cloudPath = cleanCloudPath(cloudPath)
 	if cloudPath == "/" {
+		cacheHit = true
 		return 0, nil
 	}
 	if id, ok := c.cachedID(cloudPath); ok {
+		cacheHit = true
 		return id, nil
 	}
 	resp := struct {
@@ -219,6 +262,9 @@ func (c *client115) getDirID(ctx context.Context, cloudPath string) (int64, erro
 func (c *client115) getItem(ctx context.Context, cloudPath string) (item115, error) {
 	cloudPath = cleanCloudPath(cloudPath)
 	if item, ok := c.cachedItemByPath(cloudPath); ok {
+		if timing := playbackTimingFrom(ctx); timing != nil {
+			timing.itemCacheHit = true
+		}
 		return item, nil
 	}
 	if c.isMissing(cloudPath) {
@@ -369,6 +415,13 @@ func (c *client115) copy(ctx context.Context, id, parentID int64) error {
 }
 
 func (c *client115) downloadURL(ctx context.Context, pickCode, userAgent string) (string, map[string]string, error) {
+	started := time.Now()
+	defer func() {
+		if timing := playbackTimingFrom(ctx); timing != nil {
+			timing.downurlCalls++
+			timing.downurlMs += time.Since(started).Milliseconds()
+		}
+	}()
 	if pickCode == "" {
 		return "", nil, fmt.Errorf("115 文件缺少 pickcode")
 	}
@@ -429,6 +482,11 @@ func (c *client115) downloadURL(ctx context.Context, pickCode, userAgent string)
 	}
 	return playURL, map[string]string{"User-Agent": userAgent, "Cookie": c.cookie}, nil
 }
+
+// playbackURLTTL115 是 115 chrome/downurl 临时地址的经验有效期。接口不回
+// ExpiresAt，CDN 查询参数里的 t 也不是过期时刻。大约 5 分钟后会 403，
+// 宿主按 PlaybackURLResult.ExpiresAt 缓存，避免 30 秒就把还能用的直链丢掉。
+const playbackURLTTL115 = 5 * time.Minute
 
 func selectDownloadURL(data map[string]downloadInfo115, pickCode string) (string, error) {
 	// The normal response is keyed by the requested pickcode. Prefer that
@@ -511,8 +569,12 @@ func (c *client115) doJSON(ctx context.Context, method, endpoint string, query u
 }
 
 func (c *client115) doJSONWithUserAgent(ctx context.Context, method, endpoint string, query url.Values, form url.Values, out any, userAgent string) error {
+	waitStarted := time.Now()
 	if err := c.lim.acquire(ctx); err != nil {
 		return err
+	}
+	if timing := playbackTimingFrom(ctx); timing != nil {
+		timing.rateLimitWaitMs += time.Since(waitStarted).Milliseconds()
 	}
 	reqURL := endpoint
 	if len(query) > 0 {

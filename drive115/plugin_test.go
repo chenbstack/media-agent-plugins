@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestEnsureRootDirectory115UsesExistingDirectory(t *testing.T) {
@@ -83,5 +85,37 @@ func TestSelectDownloadURLPrefersPickcodeAndIsDeterministic(t *testing.T) {
 		"a": entry("https://cdn.example/a"),
 	}, "missing"); err != nil || got != "https://cdn.example/a" {
 		t.Fatalf("deterministic fallback URL = %q, err=%v", got, err)
+	}
+}
+
+func TestPlaybackURLTTL115(t *testing.T) {
+	if playbackURLTTL115 != 5*time.Minute {
+		t.Fatalf("playbackURLTTL115 = %s, want 5m", playbackURLTTL115)
+	}
+}
+
+func TestPlaybackResolveTimingRecordsGetIDCacheHit(t *testing.T) {
+	timing := &playbackResolveTiming{}
+	ctx := withPlaybackTiming(context.Background(), timing)
+	client := newClient115("", &http.Client{}, nil)
+	client.putID("/media", 42)
+	id, err := client.getDirID(ctx, "/media")
+	if err != nil || id != 42 {
+		t.Fatalf("id=%d err=%v", id, err)
+	}
+	if timing.getIDCalls != 1 || timing.getIDCacheHits != 1 {
+		t.Fatalf("timing=%#v", timing)
+	}
+	if timing.getIDMs < 0 || timing.listDirCalls != 0 || timing.downurlCalls != 0 {
+		t.Fatalf("unexpected other stages: %#v", timing)
+	}
+}
+
+func TestPlaybackResolveTimingIgnoredWithoutContext(t *testing.T) {
+	client := newClient115("", &http.Client{}, nil)
+	client.putID("/media", 42)
+	id, err := client.getDirID(context.Background(), "/media")
+	if err != nil || id != 42 {
+		t.Fatalf("id=%d err=%v", id, err)
 	}
 }
