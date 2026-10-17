@@ -116,7 +116,7 @@ func (s *proxyService) Start(_ context.Context, options pluginsdk.HTTPServiceOpt
 	s.server = &http.Server{Handler: s, ReadHeaderTimeout: 15 * time.Second}
 	go func() {
 		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) && s.logger != nil {
-			s.logger.Error(context.Background(), "Emby 302 HTTP 服务异常退出", "error", err.Error())
+			s.logger.Error(context.Background(), "Emby 302 HTTP 服务异常退出", pluginsdk.ErrAttrs(err)...)
 		}
 	}()
 	return pluginsdk.HTTPServiceInfo{BaseURL: "http://" + listener.Addr().String(), HealthPath: healthPath}, nil
@@ -163,7 +163,7 @@ func (s *proxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					http.Redirect(w, r, finalURL, http.StatusFound)
 					return
 				} else if s.logger != nil {
-					s.logger.Warn(r.Context(), "STRM 直链解析失败，回退 Emby 流式响应", "item_id", itemID, "error", err.Error())
+					s.logger.Warn(r.Context(), "STRM 直链解析失败，回退 Emby 流式响应", append([]any{"item_id", itemID}, pluginsdk.ErrAttrs(err)...)...)
 				}
 			}
 		}
@@ -188,7 +188,7 @@ func (s *proxyService) newReverseProxy() *httputil.ReverseProxy {
 	proxy.ModifyResponse = s.modifyResponse
 	proxy.ErrorHandler = func(w http.ResponseWriter, request *http.Request, err error) {
 		if s.logger != nil {
-			s.logger.Error(request.Context(), "Emby 反向代理失败", "path", request.URL.Path, "error", err.Error())
+			s.logger.Error(request.Context(), "Emby 反向代理失败", append([]any{"path", request.URL.Path}, pluginsdk.ErrAttrs(err)...)...)
 		}
 		http.Error(w, "Emby 暂不可用", http.StatusBadGateway)
 	}

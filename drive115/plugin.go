@@ -142,7 +142,7 @@ func (p *provider) Info(ctx context.Context) (providers.StorageInfo, error) {
 		info.TotalBytes = total
 		info.UsedBytes = used
 	} else if p.logger != nil {
-		p.logger.Warn(ctx, "115 容量检测失败", "error", err.Error())
+		p.logger.Warn(ctx, "115 容量检测失败", pluginsdk.ErrAttrs(err)...)
 	}
 	return info, nil
 }
